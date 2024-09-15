@@ -1,7 +1,7 @@
 use std::process;
 
 use anyhow::Result;
-use strace_rs::trace_command;
+use rstrace::trace_command;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber;
 use tracing_subscriber::EnvFilter;

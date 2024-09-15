@@ -1,11 +1,11 @@
-# strace-rs
+# rstrace
 
-strace-rs is a Rust implementation of `strace`. It allows the user to trace system calls of a process or command.
+rstrace is a Rust implementation of `strace`. It allows the user to trace system calls of a process or command.
 
 ## Usage
 
 ```bash
-./strace-rs ls /tmp/
+rstrace ls /tmp/
 ```
 
 ## cuda_sniff extension
