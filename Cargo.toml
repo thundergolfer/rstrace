@@ -8,7 +8,7 @@ homepage = "https://github.com/thundergolfer/strace-rs"
 repository = "https://github.com/thundergolfer/strace-rs"
 readme = "README.md"
 keywords = ["strace", "syscall", "CUDA", "tracing"]
-categories = ["development-tools", "debugging"]
+categories = ["development-tools"]
 
 [dependencies]
 anyhow = "1.0.86"
