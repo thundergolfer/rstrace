@@ -7,7 +7,7 @@ description = "A Rust implementation of strace to trace system calls and CUDA AP
 homepage = "https://github.com/thundergolfer/strace-rs"
 repository = "https://github.com/thundergolfer/strace-rs"
 readme = "README.md"
-keywords = ["strace", "system calls", "CUDA", "tracing"]
+keywords = ["strace", "syscall", "CUDA", "tracing"]
 categories = ["development-tools", "debugging"]
 
 [dependencies]
