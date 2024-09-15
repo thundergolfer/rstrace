@@ -2,6 +2,13 @@
 name = "strace-rs"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "A Rust implementation of strace to trace system calls and CUDA API calls."
+homepage = "https://github.com/thundergolfer/strace-rs"
+repository = "https://github.com/thundergolfer/strace-rs"
+readme = "README.md"
+keywords = ["strace", "system calls", "CUDA", "tracing"]
+categories = ["development-tools", "debugging"]
 
 [dependencies]
 anyhow = "1.0.86"
