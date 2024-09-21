@@ -22,7 +22,7 @@ use clap::{ArgAction, Parser};
     about = "A Rust implementation of strace to trace system calls and CUDA API calls."
 )]
 struct Cli {
-    #[clap(help = "Arguments for the program to trace")]
+    #[clap(help = "Arguments for the program to trace", required = true)]
     args: Vec<String>,
 
     #[clap(short = 'o', long = "output", help = "Path to the output file")]
