@@ -6,17 +6,19 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber;
 use tracing_subscriber::EnvFilter;
 
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[clap(author, name = "rstrace", version = "0.1.0", about = "A Rust implementation of strace to trace system calls and CUDA API calls.")]
+struct Cli {
+    #[clap(help = "Arguments for the program to trace")]
+    args: Vec<String>,
+}
+
+
+
 fn main() -> Result<()> {
-    let mut args = std::env::args();
-    if args.len() < 2 {
-        eprintln!(
-            "USAGE: {} PROG ARGS",
-            args.next().expect("argv[0] always exists")
-        );
-        process::exit(2);
-    } else {
-        let _ = args.next().expect("always exists");
-    }
+    let cli = Cli::parse();
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -26,5 +28,5 @@ fn main() -> Result<()> {
         )
         .init();
 
-    unsafe { trace_command(args.into_iter()) }
+    unsafe { trace_command(cli.args.into_iter()) }
 }
