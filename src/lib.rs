@@ -104,7 +104,7 @@ fn wait_for_syscall(child: i32) -> Result<bool> {
     }
 }
 
-fn do_trace(child: i32) -> Result<()> {
+fn do_trace(child: i32, output: &mut dyn std::io::Write) -> Result<()> {
     debug!(%child, "starting trace of child");
     let _ = child;
     // Wait until child has sent itself the SIGSTOP above, and is ready to be
@@ -186,17 +186,17 @@ fn do_trace(child: i32) -> Result<()> {
                     let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
                     let argp = syscall_arg_registers.get(2).expect("must exist for ioctl")
                         as *const u64 as *mut libc::c_void;
-                    if let Some(output) = sniff_ioctl(*fd as i32, *request, argp)? {
-                        println!("SNIFF {}", output);
+                    if let Some(o) = sniff_ioctl(*fd as i32, *request, argp)? {
+                        writeln!(output, "SNIFF {}", o)?;
                     }
                 }
             }
 
-            print!("{}({}) = ", name, args_str);
+            write!(output, "{}({}) = ", name, args_str)?;
         } else {
             warn!("unknown syscall number {}", syscall_num);
             // TODO(Jonathon): emit with 'unknown' formatting.
-            print!("syscall({}) = ", syscall_num);
+            write!(output, "syscall({}) = ", syscall_num)?;
         }
         if wait_for_syscall(child)? {
             break;
@@ -204,7 +204,7 @@ fn do_trace(child: i32) -> Result<()> {
         let registers =
             ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed errno {}", errno))?;
         let retval = registers.rax;
-        println!("{}", retval);
+        writeln!(output, "{}", retval)?;
     }
 
     Ok(())
@@ -231,9 +231,10 @@ fn dump(
 }
 
 /// Takes an iterable of arguments to create a traced process.
-pub unsafe fn trace_command<T>(args: T) -> Result<()>
+pub unsafe fn trace_command<T, W>(args: T, mut output: W) -> Result<()>
 where
     T: IntoIterator<Item = String>,
+    W: std::io::Write + 'static,
 {
     // TODO(Jonathon): This should accept a generic writer so that the caller pass
     // in either `std::io::stdout` or a log file.
@@ -248,7 +249,7 @@ where
         if child == 0 {
             do_child(args)
         } else {
-            do_trace(child)
+            do_trace(child, &mut output)
         }
     }
 }
