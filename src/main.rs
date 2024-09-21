@@ -22,13 +22,25 @@ use clap::{ArgAction, Parser};
     about = "A Rust implementation of strace to trace system calls and CUDA API calls."
 )]
 struct Cli {
-    #[clap(help = "Arguments for the program to trace", required = true)]
+    #[clap(
+        help = "Arguments for the program to trace. e.g. 'ls /tmp/'",
+        required = true
+    )]
     args: Vec<String>,
 
-    #[clap(short = 'o', long = "output", help = "Path to the output file")]
+    #[clap(
+        short = 'o',
+        long = "output",
+        help = "send trace output to FILE instead of stderr"
+    )]
     output: Option<String>,
 
-    #[arg(short = 't', long = "timestamp", action = ArgAction::Count, help = "Print absolute timestamp")]
+    #[arg(
+        short = 't',
+        long = "timestamp", 
+        action = ArgAction::Count,
+        help = "Print absolute timestamp. -tt includes microseconds, -ttt uses UNIX timestamps"
+    )]
     timestamp_level: u8,
 
     #[clap(
@@ -44,6 +56,13 @@ struct Cli {
         help = "Count time, calls, and errors for each syscall and report summary in JSON format"
     )]
     summary_json: bool,
+
+    #[clap(
+        long = "cuda",
+        help = "Enable CUDA ioctl sniffing. [Requires 'cuda_sniff' feature]",
+        action = ArgAction::SetTrue
+    )]
+    cuda_sniff: bool,
 }
 
 fn main() -> Result<()> {
@@ -73,9 +92,13 @@ fn main() -> Result<()> {
         (false, true) => rstrace::SummaryOption::SummaryJSON,
         _ => rstrace::SummaryOption::None,
     };
+    if !cfg!(feature = "cuda_sniff") && cli.cuda_sniff {
+        anyhow::bail!("--cuda requires the 'cuda_sniff' feature to be enabled");
+    }
     let options = rstrace::TraceOptions {
         t,
         stats: rstrace::StatisticsOptions { summary: s },
+        cuda_sniff: cli.cuda_sniff,
         ..Default::default()
     };
 

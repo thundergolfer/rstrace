@@ -67,6 +67,7 @@ pub struct StatisticsOptions {
 pub struct TraceOptions {
     pub t: TimestampOption,
     pub stats: StatisticsOptions,
+    pub cuda_sniff: bool,
 }
 
 /// Struct to hold statistics for a single syscall.
