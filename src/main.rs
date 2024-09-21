@@ -6,6 +6,7 @@
 //! rstrace -tt ls .
 //! ```
 //! TODO(Jonathon): Implement -f and -ff to follow forks
+//! TODO(Jonathon): Support -p PID, --attach=PID
 use anyhow::Result;
 use rstrace::trace_command;
 use tracing::level_filters::LevelFilter;

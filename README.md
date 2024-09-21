@@ -8,6 +8,24 @@ rstrace is a Rust implementation of `strace`. It allows the user to trace system
 rstrace ls /tmp/
 ```
 
+To get a quick overview, use `rstrace --help`
+
+```bash
+Usage: rstrace [OPTIONS] <ARGS>...
+
+Arguments:
+  <ARGS>...  Arguments for the program to trace. e.g. 'ls /tmp/'
+
+Options:
+  -o, --output <OUTPUT>  send trace output to FILE instead of stderr
+  -t, --timestamp...     Print absolute timestamp. -tt includes microseconds, -ttt uses UNIX timestamps
+  -c, --summary-only     Count time, calls, and errors for each syscall and report summary
+  -j, --summary-json     Count time, calls, and errors for each syscall and report summary in JSON format
+      --cuda             Enable CUDA ioctl sniffing. [Requires 'cuda_sniff' feature]
+  -h, --help             Print help
+  -V, --version          Print version
+```
+
 ## cuda_sniff extension
 
 `cuda_sniff` is an extension to strace-rs that allows the user to trace CUDA API calls. It is based on
