@@ -78,7 +78,7 @@ fn main() -> Result<()> {
 
     let output: Box<dyn std::io::Write> = match cli.output {
         Some(path) => Box::new(std::fs::File::create(path)?),
-        None => Box::new(std::io::stdout()),
+        None => Box::new(std::io::stderr()),
     };
 
     let t = match cli.timestamp_level {
