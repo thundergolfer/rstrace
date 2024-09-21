@@ -60,8 +60,10 @@ fn fetch_open_gpu_kernel_modules_headers() {
     // TODO: do all files in folder not just one.
     let headers_path = source.join("kernel-open/common/inc/");
     let bindings = bindgen::Builder::default()
+        .clang_arg(format!("-I{}", headers_path.to_str().unwrap()))
         .header(headers_path.join("nv-ioctl-numbers.h").to_str().unwrap())
         .header(headers_path.join("nvlimits.h").to_str().unwrap())
+        .header(headers_path.join("nv-ioctl.h").to_str().unwrap())
         .generate()
         .expect("Unable to generate kernel-open/common/inc bindings");
 

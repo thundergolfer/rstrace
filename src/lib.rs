@@ -12,6 +12,7 @@ use std::ptr;
 use std::{collections::HashMap, ffi::CString};
 
 use anyhow::{anyhow, bail, Result};
+use info::IOCTL_N;
 use libc::{self};
 use nix::{
     sys::{signal::Signal, wait::WaitStatus},
@@ -254,13 +255,13 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
 
             #[cfg(feature = "cuda_sniff")]
             {
-                if options.cuda_sniff && syscall_num == 16 {
+                if options.cuda_sniff && syscall_num == IOCTL_N {
                     let fd = syscall_arg_registers.get(0).expect("must exist for ioctl");
                     let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
                     let argp = syscall_arg_registers.get(2).expect("must exist for ioctl")
                         as *const u64 as *mut libc::c_void;
                     if let Some(o) = sniff_ioctl(*fd as i32, *request, argp)? {
-                        writeln!(output, "{}SNIFF {}", t, o)?;
+                        writeln!(output, "{}CUDA {}", t, o)?;
                     }
                 }
             }

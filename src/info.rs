@@ -228,6 +228,9 @@ pub enum FmtSpec {
 
 use self::FmtSpec::*;
 
+/// The number of the ioctl syscall.
+pub const IOCTL_N: u64 = 16;
+
 lazy_static! {
     /// Map from a syscall's number to its name and a vector of its argument formats.
     pub static ref SYSCALL_MAP: HashMap<u64, (&'static str, Vec<FmtSpec>)> = {
@@ -248,7 +251,7 @@ lazy_static! {
             (13, ("rt_sigaction", vec![Signal, SigAction, PostSigAction, Hex])),
             (14, ("rt_sigprocmask", vec![SignalMaskAction, SigSet, PostSigSet, Hex])),
             (15, ("rt_sigreturn", vec![])),
-            (16, ("ioctl", vec![FD, Hex, Hex])),
+            (IOCTL_N, ("ioctl", vec![FD, Hex, Hex])),
             (17, ("pread64", vec![FD, ReadBuffer, Hex, Hex])),
             (18, ("pwrite64", vec![FD, WriteBuffer, Hex, Hex])),
             (19, ("readv", vec![FD, ReadIOVec, Hex])),
