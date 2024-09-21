@@ -29,6 +29,28 @@ mod cuda_sniff;
 pub mod info;
 pub mod ptrace;
 
+/// Timestamp options for tracing.
+/// Copies the -t{tt} flags from strace.
+#[derive(Debug, Clone, Copy, Default)]
+pub enum TimestampOption {
+    /// No timestamps.
+    #[default]
+    None,
+    /// Absolute timestamps.
+    Absolute,
+    /// Absolute timestamp with usecs
+    AbsoluteUsecs,
+    /// Absolute UNIX epoch time and usecs
+    AbsoluteUNIXUsecs,
+}
+
+/// Options for tracing.
+#[allow(missing_docs)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TraceOptions {
+    pub t: TimestampOption,
+}
+
 unsafe fn do_child<T>(args: T) -> Result<()>
 where
     T: IntoIterator<Item = String>,
@@ -104,7 +126,7 @@ fn wait_for_syscall(child: i32) -> Result<bool> {
     }
 }
 
-fn do_trace(child: i32, output: &mut dyn std::io::Write) -> Result<()> {
+fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) -> Result<()> {
     debug!(%child, "starting trace of child");
     let _ = child;
     // Wait until child has sent itself the SIGSTOP above, and is ready to be
@@ -139,6 +161,25 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write) -> Result<()> {
             registers.r8,
             registers.r9,
         ];
+
+        let t: String = match options.t {
+            TimestampOption::None => String::new(),
+            TimestampOption::Absolute => {
+                let format = time::format_description::parse("[hour]:[minute]:[second]")?;
+                let now = time::OffsetDateTime::now_local()
+                    .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+                format!("{} ", now.format(&format).unwrap())
+            }
+            TimestampOption::AbsoluteUsecs => {
+                let format = time::format_description::parse(
+                    "[hour]:[minute]:[second].[subsecond digits:6]",
+                )?;
+                let now = time::OffsetDateTime::now_local()
+                    .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+                format!("{} ", now.format(&format).unwrap())
+            }
+            TimestampOption::AbsoluteUNIXUsecs => todo!(),
+        };
 
         if let Some((name, arg_fmts)) = SYSCALL_MAP.get(&syscall_num) {
             let _ = arg_fmts;
@@ -187,16 +228,16 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write) -> Result<()> {
                     let argp = syscall_arg_registers.get(2).expect("must exist for ioctl")
                         as *const u64 as *mut libc::c_void;
                     if let Some(o) = sniff_ioctl(*fd as i32, *request, argp)? {
-                        writeln!(output, "SNIFF {}", o)?;
+                        writeln!(output, "{}SNIFF {}", t, o)?;
                     }
                 }
             }
 
-            write!(output, "{}({}) = ", name, args_str)?;
+            write!(output, "{}{}({}) = ", t, name, args_str)?;
         } else {
             warn!("unknown syscall number {}", syscall_num);
             // TODO(Jonathon): emit with 'unknown' formatting.
-            write!(output, "syscall({}) = ", syscall_num)?;
+            write!(output, "{}syscall({}) = ", t, syscall_num)?;
         }
         if wait_for_syscall(child)? {
             break;
@@ -231,14 +272,11 @@ fn dump(
 }
 
 /// Takes an iterable of arguments to create a traced process.
-pub unsafe fn trace_command<T, W>(args: T, mut output: W) -> Result<()>
+pub unsafe fn trace_command<T, W>(args: T, mut output: W, options: TraceOptions) -> Result<()>
 where
     T: IntoIterator<Item = String>,
     W: std::io::Write + 'static,
 {
-    // TODO(Jonathon): This should accept a generic writer so that the caller pass
-    // in either `std::io::stdout` or a log file.
-
     // We’ll start with the entry point. We check that we were passed a command,
     // and then we fork() to create two processes –
     // one to execute the program to be traced, and
@@ -249,7 +287,7 @@ where
         if child == 0 {
             do_child(args)
         } else {
-            do_trace(child, &mut output)
+            do_trace(child, &mut output, options)
         }
     }
 }
