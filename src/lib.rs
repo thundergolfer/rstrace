@@ -254,7 +254,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
 
             #[cfg(feature = "cuda_sniff")]
             {
-                if syscall_num == 16 {
+                if options.cuda_sniff && syscall_num == 16 {
                     let fd = syscall_arg_registers.get(0).expect("must exist for ioctl");
                     let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
                     let argp = syscall_arg_registers.get(2).expect("must exist for ioctl")
