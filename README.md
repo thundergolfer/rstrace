@@ -1,4 +1,8 @@
-# rstrace
+<p align="center">
+  <img height="250em" src="https://imgur.com/kJG5PZW.png"/>
+</p>
+
+<h1 align="center">rstrace</h1>
 
 rstrace is a Rust implementation of `strace`. It allows the user to trace system calls of a process or command.
 
