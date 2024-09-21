@@ -30,6 +30,20 @@ struct Cli {
 
     #[arg(short = 't', long = "timestamp", action = ArgAction::Count, help = "Print absolute timestamp")]
     timestamp_level: u8,
+
+    #[clap(
+        short = 'c',
+        long = "summary-only",
+        help = "Count time, calls, and errors for each syscall and report summary"
+    )]
+    summary_only: bool,
+
+    #[clap(
+        short = 'j',
+        long = "summary-json",
+        help = "Count time, calls, and errors for each syscall and report summary in JSON format"
+    )]
+    summary_json: bool,
 }
 
 fn main() -> Result<()> {
@@ -54,8 +68,14 @@ fn main() -> Result<()> {
         2 => rstrace::TimestampOption::AbsoluteUsecs,
         _ => rstrace::TimestampOption::AbsoluteUNIXUsecs,
     };
+    let s = match (cli.summary_only, cli.summary_json) {
+        (true, false) => rstrace::SummaryOption::SummaryOnly,
+        (false, true) => rstrace::SummaryOption::SummaryJSON,
+        _ => rstrace::SummaryOption::None,
+    };
     let options = rstrace::TraceOptions {
         t,
+        stats: rstrace::StatisticsOptions { summary: s },
         ..Default::default()
     };
 

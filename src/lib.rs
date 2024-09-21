@@ -7,9 +7,9 @@ extern crate bitflags;
 #[macro_use]
 extern crate lazy_static;
 
-use std::ffi::CString;
 use std::io::Error;
 use std::ptr;
+use std::{collections::HashMap, ffi::CString};
 
 use anyhow::{anyhow, bail, Result};
 use libc::{self};
@@ -44,11 +44,40 @@ pub enum TimestampOption {
     AbsoluteUNIXUsecs,
 }
 
+#[allow(missing_docs)]
+#[derive(Debug, Clone, Default)]
+pub enum SummaryOption {
+    #[default]
+    None,
+    SummaryOnly,
+    SummaryJSON,
+}
+
+/// Options for statistics.
+#[allow(missing_docs)]
+#[derive(Debug, Clone, Default)]
+pub struct StatisticsOptions {
+    /// Count time, calls, and errors for each syscall and report summary
+    pub summary: SummaryOption,
+}
+
 /// Options for tracing.
 #[allow(missing_docs)]
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct TraceOptions {
     pub t: TimestampOption,
+    pub stats: StatisticsOptions,
+}
+
+/// Struct to hold statistics for a single syscall.
+#[derive(Debug, Default, Clone)]
+pub struct SyscallStat {
+    /// The number of times the syscall was called.
+    pub calls: u64,
+    /// The total time spent in the syscall.
+    pub latency: std::time::Duration,
+    /// The number of errors encountered during the syscall.
+    pub errors: u64,
 }
 
 unsafe fn do_child<T>(args: T) -> Result<()>
@@ -144,6 +173,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             errno
         );
     }
+
+    let _summary_stats: HashMap<u64, SyscallStat> = HashMap::new();
 
     loop {
         if wait_for_syscall(child)? {
