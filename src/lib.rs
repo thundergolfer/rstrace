@@ -14,6 +14,7 @@ use std::{collections::HashMap, ffi::CString};
 use anyhow::{anyhow, bail, Result};
 use info::IOCTL_N;
 use libc::{self};
+use nix::errno::Errno;
 use nix::{
     sys::{signal::Signal, wait::WaitStatus},
     unistd::Pid,
@@ -285,8 +286,14 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
 
         let registers =
             ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed: errno {}", errno))?;
-        let retval = registers.rax;
-        writeln!(output, "{}", retval)?;
+        if registers.rax & (1 << 63) != 0 {
+            let errno = registers.rax as i64;
+            let err_name: Errno = Errno::from_raw(errno as i32);
+            writeln!(output, "{} {}", errno, err_name)?;
+        } else {
+            let retval = registers.rax;
+            writeln!(output, "{}", retval)?;
+        }
     }
 
     let trace_end = std::time::Instant::now();
