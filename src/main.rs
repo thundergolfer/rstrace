@@ -52,6 +52,13 @@ struct Cli {
     summary_only: bool,
 
     #[clap(
+        short = 'C',
+        long = "summary",
+        help = "like -c, but also print the regular output"
+    )]
+    summary: bool,
+
+    #[clap(
         short = 'j',
         long = "summary-json",
         help = "Count time, calls, and errors for each syscall and report summary in JSON format"
@@ -88,9 +95,10 @@ fn main() -> Result<()> {
         2 => rstrace::TimestampOption::AbsoluteUsecs,
         _ => rstrace::TimestampOption::AbsoluteUNIXUsecs,
     };
-    let s = match (cli.summary_only, cli.summary_json) {
-        (true, false) => rstrace::SummaryOption::SummaryOnly,
-        (false, true) => rstrace::SummaryOption::SummaryJSON,
+    let s = match (cli.summary_only, cli.summary_json, cli.summary) {
+        (true, false, false) => rstrace::SummaryOption::SummaryOnly,
+        (false, true, false) => rstrace::SummaryOption::SummaryJSON,
+        (false, false, true) => rstrace::SummaryOption::Summary,
         _ => rstrace::SummaryOption::None,
     };
     if !cfg!(feature = "cuda_sniff") && cli.cuda_sniff {

@@ -20,6 +20,7 @@ nix = { version = "0.28.0", features = ["process", "ptrace"] }
 num = "0.4.3"
 num-derive = "0.4.2"
 num-traits = "0.2.19"
+prettytable-rs = "0.10.0"
 time = { version = "0.3.36", features = ["formatting", "parsing", "local-offset"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

@@ -18,17 +18,20 @@ use nix::{
     sys::{signal::Signal, wait::WaitStatus},
     unistd::Pid,
 };
+use statistics::summary_to_table;
 use tracing::{debug, trace, warn};
 
 use crate::{
     cuda_sniff::sniff_ioctl,
     info::{FmtSpec, SYSCALL_MAP},
+    statistics::SyscallStat,
 };
 #[allow(dead_code, non_upper_case_globals)]
 #[cfg(feature = "cuda_sniff")]
 mod cuda_sniff;
 pub mod info;
 pub mod ptrace;
+pub mod statistics;
 
 /// Timestamp options for tracing.
 /// Copies the -t{tt} flags from strace.
@@ -46,12 +49,13 @@ pub enum TimestampOption {
 }
 
 #[allow(missing_docs)]
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum SummaryOption {
     #[default]
     None,
     SummaryOnly,
     SummaryJSON,
+    Summary,
 }
 
 /// Options for statistics.
@@ -69,17 +73,6 @@ pub struct TraceOptions {
     pub t: TimestampOption,
     pub stats: StatisticsOptions,
     pub cuda_sniff: bool,
-}
-
-/// Struct to hold statistics for a single syscall.
-#[derive(Debug, Default, Clone)]
-pub struct SyscallStat {
-    /// The number of times the syscall was called.
-    pub calls: u64,
-    /// The total time spent in the syscall.
-    pub latency: std::time::Duration,
-    /// The number of errors encountered during the syscall.
-    pub errors: u64,
 }
 
 unsafe fn do_child<T>(args: T) -> Result<()>
@@ -159,6 +152,7 @@ fn wait_for_syscall(child: i32) -> Result<bool> {
 
 fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) -> Result<()> {
     debug!(%child, "starting trace of child");
+    let trace_start = std::time::Instant::now();
     let _ = child;
     // Wait until child has sent itself the SIGSTOP above, and is ready to be
     // traced.
@@ -176,7 +170,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         );
     }
 
-    let _summary_stats: HashMap<u64, SyscallStat> = HashMap::new();
+    let mut summary_stats: HashMap<u64, SyscallStat> = HashMap::new();
 
     loop {
         if wait_for_syscall(child)? {
@@ -213,6 +207,11 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             }
             TimestampOption::AbsoluteUNIXUsecs => todo!(),
         };
+
+        if options.stats.summary != SummaryOption::None {
+            let stat = summary_stats.entry(syscall_num).or_default();
+            stat.calls += 1;
+        }
 
         if let Some((name, arg_fmts)) = SYSCALL_MAP.get(&syscall_num) {
             let _ = arg_fmts;
@@ -272,13 +271,29 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             // TODO(Jonathon): emit with 'unknown' formatting.
             write!(output, "{}syscall({}) = ", t, syscall_num)?;
         }
+
+        // Wait for the syscall to complete
+        let start = std::time::Instant::now();
         if wait_for_syscall(child)? {
             break;
         }
+        let duration = start.elapsed();
+        if options.stats.summary != SummaryOption::None {
+            let stat = summary_stats.entry(syscall_num).or_default();
+            stat.latency += duration;
+        }
+
         let registers =
-            ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed errno {}", errno))?;
+            ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed: errno {}", errno))?;
         let retval = registers.rax;
         writeln!(output, "{}", retval)?;
+    }
+
+    let trace_end = std::time::Instant::now();
+    let trace_duration = trace_end.duration_since(trace_start);
+    if options.stats.summary != SummaryOption::None {
+        let s = summary_to_table(summary_stats, trace_duration);
+        writeln!(output, "\n{}", s)?;
     }
 
     Ok(())
