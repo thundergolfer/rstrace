@@ -214,6 +214,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             stat.calls += 1;
         }
 
+        let show_syscalls = options.stats.summary != SummaryOption::SummaryOnly;
+
         if let Some((name, arg_fmts)) = SYSCALL_MAP.get(&syscall_num) {
             let _ = arg_fmts;
             let mut args_str = String::new();
@@ -261,16 +263,22 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                     let argp = syscall_arg_registers.get(2).expect("must exist for ioctl")
                         as *const u64 as *mut libc::c_void;
                     if let Some(o) = sniff_ioctl(*fd as i32, *request, argp)? {
-                        writeln!(output, "{}CUDA {}", t, o)?;
+                        if show_syscalls {
+                            writeln!(output, "{}CUDA {}", t, o)?;
+                        }
                     }
                 }
             }
 
-            write!(output, "{}{}({}) = ", t, name, args_str)?;
+            if show_syscalls {
+                write!(output, "{}{}({}) = ", t, name, args_str)?;
+            }
         } else {
             warn!("unknown syscall number {}", syscall_num);
             // TODO(Jonathon): emit with 'unknown' formatting.
-            write!(output, "{}syscall({}) = ", t, syscall_num)?;
+            if show_syscalls {
+                write!(output, "{}syscall({}) = ", t, syscall_num)?;
+            }
         }
 
         // Wait for the syscall to complete
@@ -289,10 +297,14 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         if registers.rax & (1 << 63) != 0 {
             let errno = registers.rax as i64;
             let err_name: Errno = Errno::from_raw(errno as i32);
-            writeln!(output, "{} {}", errno, err_name)?;
+            if show_syscalls {
+                writeln!(output, "{} {}", errno, err_name)?;
+            }
         } else {
             let retval = registers.rax;
-            writeln!(output, "{}", retval)?;
+            if show_syscalls {
+                writeln!(output, "{}", retval)?;
+            }
         }
     }
 
