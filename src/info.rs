@@ -230,6 +230,8 @@ use self::FmtSpec::*;
 
 /// The number of the ioctl syscall.
 pub const IOCTL_N: u64 = 16;
+/// The number of the exit_group syscall.
+pub const EXIT_GROUP_N: u64 = 231;
 
 lazy_static! {
     /// Map from a syscall's number to its name and a vector of its argument formats.
@@ -466,7 +468,7 @@ lazy_static! {
             (228, ("clock_gettime", vec![Hex, PostTimespec])),
             (229, ("clock_getres", vec![Hex, PostTimespec])),
             (230, ("clock_nanosleep", vec![Hex, Hex, Timespec, PostTimespec])),
-            (231, ("exit_group", vec![Hex])),
+            (EXIT_GROUP_N, ("exit_group", vec![Hex])),
             (232, ("epoll_wait", vec![FD, EpollEvents, Hex, Hex])),
             (233, ("epoll_ctl", vec![FD, EpollCtlOp, FD, EpollEvent])),
             (234, ("tgkill", vec![Hex, Hex, Signal])),

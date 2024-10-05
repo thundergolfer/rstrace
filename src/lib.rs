@@ -76,13 +76,14 @@ pub struct TraceOptions {
     pub cuda_sniff: bool,
 }
 
-unsafe fn do_child<T>(args: T) -> Result<()>
+unsafe fn do_child<T, S>(args: T) -> Result<()>
 where
-    T: IntoIterator<Item = String>,
+    T: IntoIterator<Item = S>,
+    S: AsRef<str>,
 {
     let cstrings: Vec<CString> = args
         .into_iter()
-        .map(|arg| CString::new(arg.as_str()).expect("CString::new failed"))
+        .map(|arg| CString::new(arg.as_ref()).expect("CString::new failed"))
         .collect();
 
     let child_prog = cstrings.get(0).unwrap().clone();
@@ -312,7 +313,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
     let trace_duration = trace_end.duration_since(trace_start);
     if options.stats.summary != SummaryOption::None {
         let s = summary_to_table(summary_stats, trace_duration);
-        writeln!(output, "\n{}", s)?;
+        writeln!(output, "{}", s)?;
     }
 
     Ok(())
@@ -339,9 +340,10 @@ fn dump(
 }
 
 /// Takes an iterable of arguments to create a traced process.
-pub unsafe fn trace_command<T, W>(args: T, mut output: W, options: TraceOptions) -> Result<()>
+pub unsafe fn trace_command<T, S, W>(args: T, output: &mut W, options: TraceOptions) -> Result<()>
 where
-    T: IntoIterator<Item = String>,
+    T: IntoIterator<Item = S>,
+    S: AsRef<str>,
     W: std::io::Write + 'static,
 {
     // We’ll start with the entry point. We check that we were passed a command,
@@ -354,7 +356,7 @@ where
         if child == 0 {
             do_child(args)
         } else {
-            do_trace(child, &mut output, options)
+            do_trace(child, output, options)
         }
     }
 }

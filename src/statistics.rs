@@ -8,6 +8,7 @@ use prettytable::{
 };
 
 use crate::info::SYSCALL_MAP;
+use crate::info::EXIT_GROUP_N;
 
 /// Struct to hold statistics for a single syscall.
 #[derive(Debug, Default, Clone)]
@@ -21,7 +22,10 @@ pub struct SyscallStat {
 }
 
 /// Convert the summary statistics to a table in the same format as strace's tables.
-pub fn summary_to_table(summary_stats: HashMap<u64, SyscallStat>, trace_duration: std::time::Duration) -> String {
+pub fn summary_to_table(
+    summary_stats: HashMap<u64, SyscallStat>,
+    trace_duration: std::time::Duration,
+) -> String {
     let mut table = Table::new();
     let format = FormatBuilder::new()
         .column_separator(' ')
@@ -44,13 +48,21 @@ pub fn summary_to_table(summary_stats: HashMap<u64, SyscallStat>, trace_duration
     let mut sorted_stats: Vec<_> = summary_stats.into_iter().collect();
     sorted_stats.sort_by(|a, b| b.1.latency.cmp(&a.1.latency));
     for (syscall_num, stat) in sorted_stats {
+        if syscall_num == EXIT_GROUP_N {
+            // strace doesn't include this syscall in summaries, presumably because
+            // there's always exactly one exit_group call per process.
+            continue;
+        }
         let name = SYSCALL_MAP
             .get(&syscall_num)
             .map(|s| s.0)
             .unwrap_or("unknown");
         table.add_row(Row::new(vec![
             Cell::new_align(
-                &format!("{:>6.2}", (stat.latency.as_secs_f64() / trace_duration.as_secs_f64()) * 100.0),
+                &format!(
+                    "{:>6.2}",
+                    (stat.latency.as_secs_f64() / trace_duration.as_secs_f64()) * 100.0
+                ),
                 prettytable::format::Alignment::RIGHT,
             ),
             Cell::new_align(

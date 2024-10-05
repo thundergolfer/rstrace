@@ -84,7 +84,7 @@ fn main() -> Result<()> {
         )
         .init();
 
-    let output: Box<dyn std::io::Write> = match cli.output {
+    let mut output: Box<dyn std::io::Write> = match cli.output {
         Some(path) => Box::new(std::fs::File::create(path)?),
         None => Box::new(std::io::stderr()),
     };
@@ -111,5 +111,5 @@ fn main() -> Result<()> {
         ..Default::default()
     };
 
-    unsafe { trace_command(cli.args.into_iter(), output, options) }
+    unsafe { trace_command(cli.args.into_iter(), &mut output, options) }
 }
