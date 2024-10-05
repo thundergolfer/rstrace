@@ -4,6 +4,8 @@
 
 <h1 align="center">rstrace</h1>
 
+![CI status](https://github.com/thundergolfer/rstrace/actions/workflows/ci.yml/badge.svg)
+
 rstrace is a Rust implementation of `strace`. It allows the user to trace system calls of a process or command.
 
 ## Usage
