@@ -1,5 +1,5 @@
 <p align="center">
-  <img height="250em" src="https://i.imgur.com/DmVRIUz.png"/>
+  <img height="200em" src="https://i.imgur.com/DmVRIUz.png"/>
 </p>
 
 <h1 align="center">rstrace</h1>
