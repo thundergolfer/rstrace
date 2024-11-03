@@ -15,7 +15,7 @@ fn count_syscalls(output: &str) -> HashMap<&str, u32> {
         // 6 if non-zero errors, else 5.
         let (calls, syscall) = if parts.len() == 6 {
             (parts[3].parse().unwrap(), parts[5])
-        } else if parts.len() ==  5 {
+        } else if parts.len() == 5 {
             (parts[3].parse().unwrap(), parts[4])
         } else {
             panic!("Unexpected number of parts: {:?}", parts);
@@ -60,7 +60,10 @@ fn test_trace_echo() -> Result<()> {
             continue;
         }
         let strace_count = s_counts.get(syscall).unwrap_or(&0);
-        assert_eq!(count, *strace_count, "mismatch on {syscall}: rstrace has {count} but strace has {strace_count}");
+        assert_eq!(
+            count, *strace_count,
+            "mismatch on {syscall}: rstrace has {count} but strace has {strace_count}"
+        );
     }
 
     Ok(())

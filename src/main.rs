@@ -24,9 +24,7 @@ const NAME: &str = "rstrace";
     about = "A Rust implementation of strace to trace system calls and CUDA API calls."
 )]
 struct Cli {
-    #[clap(
-        help = "Arguments for the program to trace. e.g. 'ls /tmp/'",
-    )]
+    #[clap(help = "Arguments for the program to trace. e.g. 'ls /tmp/'")]
     args: Vec<String>,
 
     #[clap(
@@ -126,7 +124,11 @@ fn main() -> Result<()> {
         unsafe { trace_attach(pid, &mut output, options) }
     } else {
         if cli.args.is_empty() {
-            anyhow::bail!("{}: must have PROG [ARGS] or -p PID.\nTry '{} -h' for more information.", NAME, NAME);
+            anyhow::bail!(
+                "{}: must have PROG [ARGS] or -p PID.\nTry '{} -h' for more information.",
+                NAME,
+                NAME
+            );
         }
         unsafe { trace_command(cli.args.into_iter(), &mut output, options) }
     }

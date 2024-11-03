@@ -7,8 +7,8 @@ use prettytable::{
     Cell, Row, Table,
 };
 
-use crate::info::SYSCALL_MAP;
 use crate::info::EXIT_GROUP_N;
+use crate::info::SYSCALL_MAP;
 
 /// Struct to hold statistics for a single syscall.
 #[derive(Debug, Default, Clone)]
