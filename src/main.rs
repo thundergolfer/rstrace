@@ -6,26 +6,26 @@
 //! rstrace -tt ls .
 //! ```
 //! TODO(Jonathon): Implement -f and -ff to follow forks
-//! TODO(Jonathon): Support -p PID, --attach=PID
 use anyhow::Result;
-use rstrace::trace_command;
+use rstrace::{trace_attach, trace_command};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber;
 use tracing_subscriber::EnvFilter;
 
 use clap::{ArgAction, Parser};
 
+const NAME: &str = "rstrace";
+
 #[derive(Parser, Debug)]
 #[clap(
     author,
-    name = "rstrace",
+    name = NAME,
     version = "0.1.0",
     about = "A Rust implementation of strace to trace system calls and CUDA API calls."
 )]
 struct Cli {
     #[clap(
         help = "Arguments for the program to trace. e.g. 'ls /tmp/'",
-        required = true
     )]
     args: Vec<String>,
 
@@ -71,6 +71,14 @@ struct Cli {
         action = ArgAction::SetTrue
     )]
     cuda_sniff: bool,
+
+    #[clap(
+        short = 'p',
+        long = "attach",
+        help = "Attach to the process with the process ID pid and begin tracing.",
+        requires = "pid"
+    )]
+    pid: Option<i32>,
 }
 
 fn main() -> Result<()> {
@@ -111,5 +119,15 @@ fn main() -> Result<()> {
         ..Default::default()
     };
 
-    unsafe { trace_command(cli.args.into_iter(), &mut output, options) }
+    if let Some(pid) = cli.pid {
+        if !cli.args.is_empty() {
+            eprintln!("WARN: ignoring command arguments when attaching to a process");
+        }
+        unsafe { trace_attach(pid, &mut output, options) }
+    } else {
+        if cli.args.is_empty() {
+            anyhow::bail!("{}: must have PROG [ARGS] or -p PID.\nTry '{} -h' for more information.", NAME, NAME);
+        }
+        unsafe { trace_command(cli.args.into_iter(), &mut output, options) }
+    }
 }

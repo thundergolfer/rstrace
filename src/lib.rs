@@ -360,3 +360,11 @@ where
         }
     }
 }
+
+/// Takes a process ID (PID) and traces it.
+pub unsafe fn trace_attach(pid: i32, output: &mut dyn std::io::Write, options: TraceOptions) -> Result<()> {
+    // Attach to the process with the given PID using ptrace
+    ptrace::attach(pid)
+        .map_err(|errno| anyhow!("ptrace attach failed. errno {}", errno))?;
+    do_trace(pid, output, options)
+}
