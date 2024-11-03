@@ -276,9 +276,9 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             }
         } else {
             warn!("unknown syscall number {}", syscall_num);
-            // TODO(Jonathon): emit with 'unknown' formatting.
+            // "Syscalls unknown to strace are printed raw, with the unknown system call number printed in hexadecimal form and prefixed with "syscall_":"
             if show_syscalls {
-                write!(output, "{}syscall({}) = ", t, syscall_num)?;
+                write!(output, "{}syscall_{:#x} = ", t, syscall_num)?;
             }
         }
 
