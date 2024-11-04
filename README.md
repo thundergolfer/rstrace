@@ -17,17 +17,19 @@ rstrace ls /tmp/
 To get a quick overview, use `rstrace --help`
 
 ```bash
-Usage: rstrace [OPTIONS] <ARGS>...
+Usage: rstrace [OPTIONS] [ARGS]...
 
 Arguments:
-  <ARGS>...  Arguments for the program to trace. e.g. 'ls /tmp/'
+  [ARGS]...  Arguments for the program to trace. e.g. 'ls /tmp/'
 
 Options:
   -o, --output <OUTPUT>  send trace output to FILE instead of stderr
   -t, --timestamp...     Print absolute timestamp. -tt includes microseconds, -ttt uses UNIX timestamps
   -c, --summary-only     Count time, calls, and errors for each syscall and report summary
+  -C, --summary          like -c, but also print the regular output
   -j, --summary-json     Count time, calls, and errors for each syscall and report summary in JSON format
       --cuda             Enable CUDA ioctl sniffing. [Requires 'cuda_sniff' feature]
+  -p, --attach <PID>     Attach to the process with the process ID pid and begin tracing.
   -h, --help             Print help
   -V, --version          Print version
 ```
