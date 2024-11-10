@@ -58,12 +58,17 @@ fn fetch_open_gpu_kernel_modules_headers() {
     }
 
     // TODO: do all files in folder not just one.
-    let headers_path = source.join("kernel-open/common/inc/");
+    let common_inc_headers_path = source.join("kernel-open/common/inc/");
     let bindings = bindgen::Builder::default()
-        .clang_arg(format!("-I{}", headers_path.to_str().unwrap()))
-        .header(headers_path.join("nv-ioctl-numbers.h").to_str().unwrap())
-        .header(headers_path.join("nvlimits.h").to_str().unwrap())
-        .header(headers_path.join("nv-ioctl.h").to_str().unwrap())
+        .clang_arg(format!("-I{}", common_inc_headers_path.to_str().unwrap()))
+        .header(
+            common_inc_headers_path
+                .join("nv-ioctl-numbers.h")
+                .to_str()
+                .unwrap(),
+        )
+        .header(common_inc_headers_path.join("nvlimits.h").to_str().unwrap())
+        .header(common_inc_headers_path.join("nv-ioctl.h").to_str().unwrap())
         .generate()
         .expect("Unable to generate kernel-open/common/inc bindings");
 
@@ -71,18 +76,27 @@ fn fetch_open_gpu_kernel_modules_headers() {
         .write_to_file(output.join("open-gpu-kernel-modules.kernel-open.common.inc.rs"))
         .expect("Couldn't write kernel-open/common/inc bindings!");
 
-    let headers_path = source.join("src/common/sdk/nvidia/inc/");
+    let nvidia_inc_headers_path = source.join("src/common/sdk/nvidia/inc/");
     let bindings = bindgen::Builder::default()
-        .header(headers_path.join("nvtypes.h").to_str().unwrap())
+        .clang_arg(format!("-I{}", nvidia_inc_headers_path.to_str().unwrap()))
+        .header(nvidia_inc_headers_path.join("nvtypes.h").to_str().unwrap())
+        .header(nvidia_inc_headers_path.join("nvos.h").to_str().unwrap())
         .generate()
         .expect("Unable to generate src/common/sdk/nvidia/inc/ bindings");
     bindings
         .write_to_file(output.join("open-gpu-kernel-modules.src.common.sdk.nvidia.inc.rs"))
         .expect("Couldn't write src/common/sdk/nvidia/inc bindings!");
 
-    let headers_path = source.join("src/nvidia/arch/nvalloc/unix/include/");
+    let nvalloc_headers_path = source.join("src/nvidia/arch/nvalloc/unix/include/");
     let bindings = bindgen::Builder::default()
-        .header(headers_path.join("nv_escape.h").to_str().unwrap())
+        .clang_arg(format!("-I{}", nvidia_inc_headers_path.to_str().unwrap()))
+        .header(nvalloc_headers_path.join("nv_escape.h").to_str().unwrap())
+        .header(
+            nvalloc_headers_path
+                .join("nv-unix-nvos-params-wrappers.h")
+                .to_str()
+                .unwrap(),
+        )
         .generate()
         .expect("Unable to generate src/nvidia/arch/nvalloc/unix/include/ bindings");
     bindings

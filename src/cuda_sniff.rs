@@ -30,6 +30,8 @@ mod nvalloc_unix_include {
 }
 
 use common_inc::*;
+#[allow(unused_imports)]
+use common_sdk_nvidia::*;
 use nvalloc_unix_include::*;
 
 /// Sniffs an ioctl syscall and if it determines that the ioctl is NVIDIA
@@ -66,11 +68,27 @@ pub fn sniff_ioctl(fd: c_int, request: c_ulong, argp: *mut c_void) -> Result<Opt
         NV_ESC_WAIT_OPEN_COMPLETE => format!("NV_ESC_WAIT_OPEN_COMPLETE"),
 
         // From src/nvidia/arch/nvalloc/unix/include/nv_escape.h:
-        NV_ESC_RM_ALLOC_MEMORY => format!("NV_ESC_RM_ALLOC_MEMORY"),
+        NV_ESC_RM_ALLOC_MEMORY => {
+            let params = argp as *const nv_ioctl_nvos02_parameters_with_fd;
+            format!("NV_ESC_RM_ALLOC_MEMORY: {:?}", unsafe { (*params).params })
+        }
         NV_ESC_RM_FREE => format!("NV_ESC_RM_FREE"),
         NV_ESC_RM_CONTROL => format!("NV_ESC_RM_CONTROL"),
         NV_ESC_RM_ALLOC => format!("NV_ESC_RM_ALLOC"),
-        NV_ESC_RM_VID_HEAP_CONTROL => format!("NV_ESC_RM_VID_HEAP_CONTROL"),
+        NV_ESC_RM_VID_HEAP_CONTROL => {
+            let params = argp as *const common_sdk_nvidia::NVOS32_PARAMETERS;
+            unsafe {
+                if (*params).function == nvalloc_unix_include::NVOS32_FUNCTION_ALLOC_SIZE {
+                    let alloc_size_params = &(*params).data.AllocSize;
+                    format!(
+                        "NV_ESC_RM_VID_HEAP_CONTROL alloc_size: {:?}",
+                        *alloc_size_params
+                    )
+                } else {
+                    format!("NV_ESC_RM_VID_HEAP_CONTROL")
+                }
+            }
+        }
         NV_ESC_RM_MAP_MEMORY => format!("NV_ESC_RM_MAP_MEMORY"),
         NV_ESC_RM_UNMAP_MEMORY => format!("NV_ESC_RM_UNMAP_MEMORY"),
         NV_ESC_RM_UPDATE_DEVICE_MAPPING_INFO => format!("NV_ESC_RM_UPDATE_DEVICE_MAPPING_INFO"),

@@ -237,31 +237,35 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         let size = syscall_arg_registers
                             .get(2)
                             .expect("TODO: don't assume this is read syscall");
-                        let contents = dump(child, register, *size as usize, 36, true)?;
+                        let contents = dump(child, register, *size as usize, 36, true)
+                            .unwrap_or("READ FAILED".into());
                         format!("\"{}\"", contents)
                     }
                     FmtSpec::FD => {
-                        if i == 0 && syscall_num == OPENAT_N && *register as i32 == AT_FDCWD as i32 {
+                        if i == 0 && syscall_num == OPENAT_N && *register as i32 == AT_FDCWD as i32
+                        {
                             "AT_FDCWD".to_string()
                         } else {
                             // TODO: resolve to path
                             format!("{}", register)
                         }
-                    },
+                    }
                     FmtSpec::Hex => {
                         format!("{:#x}", register)
-                    },
+                    }
                     // TODO(Jonathon): escape tabs, newlines
                     FmtSpec::WriteBuffer => {
                         let size = syscall_arg_registers
                             .get(2)
                             .expect("TODO: don't assume this is write syscall");
-                        let contents = dump(child, register, *size as usize, 36, true)?;
+                        let contents = dump(child, register, *size as usize, 36, true)
+                            .unwrap_or("DUMP FAILED".into());
                         format!("\"{}\"", contents)
-                    },
+                    }
                     FmtSpec::Path => {
                         // TODO: this doesn't handle paths longer than 1024 bytes
-                        let s = read_path_from_child(child, register)?;
+                        let s =
+                            read_path_from_child(child, register).unwrap_or("READ FAILED".into());
                         format!("\"{}\"", s)
                     }
                     _ => format!("{:#x}", register),
@@ -314,8 +318,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             if options.cuda_sniff && syscall_num == IOCTL_N {
                 let fd = syscall_arg_registers.get(0).expect("must exist for ioctl");
                 let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
-                let argp = syscall_arg_registers.get(2).expect("must exist for ioctl")
-                    as *const u64 as *mut libc::c_void;
+                let argp = syscall_arg_registers.get(2).expect("must exist for ioctl") as *const u64
+                    as *mut libc::c_void;
                 if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp)? {
                     if show_syscalls {
                         let ioctl = render_cuda(options.colored_output, ioctl);
