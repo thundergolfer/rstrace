@@ -232,6 +232,8 @@ use self::FmtSpec::*;
 pub const IOCTL_N: u64 = 16;
 /// The number of the exit_group syscall.
 pub const EXIT_GROUP_N: u64 = 231;
+/// The number of the openat syscall.
+pub const OPENAT_N: u64 = 257;
 
 lazy_static! {
     /// Map from a syscall's number to its name and a vector of its argument formats.
@@ -494,7 +496,7 @@ lazy_static! {
             (254, ("inotify_add_watch", vec![Hex, Path, Hex])),
             (255, ("inotify_rm_watch", vec![Hex, Hex])),
             (256, ("migrate_pages", vec![Hex, Hex, Hex, Hex])),
-            (257, ("openat", vec![FD, Path, OpenFlags, Mode])),
+            (OPENAT_N, ("openat", vec![FD, Path, OpenFlags, Mode])),
             (258, ("mkdirat", vec![FD, Path, Hex])),
             (259, ("mknodat", vec![FD, Path, Mode, Hex])),
             (260, ("fchownat", vec![FD, Path, Hex, Hex, Hex])),

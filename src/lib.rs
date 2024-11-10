@@ -12,8 +12,8 @@ use std::ptr;
 use std::{collections::HashMap, ffi::CString};
 
 use anyhow::{anyhow, bail, Result};
-use info::IOCTL_N;
-use libc::{self};
+use info::{IOCTL_N, OPENAT_N};
+use libc::{self, AT_FDCWD};
 use nix::errno::Errno;
 use nix::{
     sys::{signal::Signal, wait::WaitStatus},
@@ -221,7 +221,6 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         let show_syscalls = options.stats.summary != SummaryOption::SummaryOnly;
 
         if let Some((name, arg_fmts)) = SYSCALL_MAP.get(&syscall_num) {
-            let _ = arg_fmts;
             let mut args_str = String::new();
             let zipped = syscall_arg_registers
                 .iter()
@@ -241,8 +240,17 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         let contents = dump(child, register, *size as usize, 36, true)?;
                         format!("\"{}\"", contents)
                     }
-                    FmtSpec::FD => format!("{}", register), // TODO: resolve to path
-                    FmtSpec::Hex => format!("{:#x}", register),
+                    FmtSpec::FD => {
+                        if i == 0 && syscall_num == OPENAT_N && *register as i32 == AT_FDCWD as i32 {
+                            "AT_FDCWD".to_string()
+                        } else {
+                            // TODO: resolve to path
+                            format!("{}", register)
+                        }
+                    },
+                    FmtSpec::Hex => {
+                        format!("{:#x}", register)
+                    },
                     // TODO(Jonathon): escape tabs, newlines
                     FmtSpec::WriteBuffer => {
                         let size = syscall_arg_registers
