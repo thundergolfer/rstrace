@@ -79,6 +79,17 @@ fn fetch_open_gpu_kernel_modules_headers() {
     bindings
         .write_to_file(output.join("open-gpu-kernel-modules.src.common.sdk.nvidia.inc.rs"))
         .expect("Couldn't write src/common/sdk/nvidia/inc bindings!");
+
+    let headers_path = source.join("src/nvidia/arch/nvalloc/unix/include/");
+    let bindings = bindgen::Builder::default()
+        .header(headers_path.join("nv_escape.h").to_str().unwrap())
+        .generate()
+        .expect("Unable to generate src/nvidia/arch/nvalloc/unix/include/ bindings");
+    bindings
+        .write_to_file(
+            output.join("open-gpu-kernel-modules.src.nvidia.arch.nvalloc.unix.include.rs"),
+        )
+        .expect("Couldn't write src/nvidia/arch/nvalloc/unix/include bindings!");
 }
 
 #[cfg(target_os = "linux")]

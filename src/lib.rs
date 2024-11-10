@@ -20,7 +20,7 @@ use nix::{
     unistd::Pid,
 };
 use statistics::summary_to_table;
-use terminal::render_syscall;
+use terminal::{render_cuda, render_syscall};
 use tracing::{debug, trace, warn};
 
 use crate::{
@@ -266,9 +266,10 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                     let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
                     let argp = syscall_arg_registers.get(2).expect("must exist for ioctl")
                         as *const u64 as *mut libc::c_void;
-                    if let Some(o) = sniff_ioctl(*fd as i32, *request, argp)? {
+                    if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp)? {
                         if show_syscalls {
-                            writeln!(output, "{}CUDA {}", t, o)?;
+                            let ioctl = render_cuda(options.colored_output, ioctl);
+                            writeln!(output, "{}{}", t, ioctl)?;
                         }
                     }
                 }

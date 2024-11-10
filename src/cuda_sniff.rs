@@ -21,7 +21,16 @@ mod common_sdk_nvidia {
     ));
 }
 
+#[allow(dead_code, non_camel_case_types, non_snake_case)]
+mod nvalloc_unix_include {
+    include!(concat!(
+        env!("OUT_DIR"),
+        "/open-gpu-kernel-modules.src.nvidia.arch.nvalloc.unix.include.rs"
+    ));
+}
+
 use common_inc::*;
+use nvalloc_unix_include::*;
 
 /// Sniffs an ioctl syscall and if it determines that the ioctl is NVIDIA
 /// related returns trace log output. Otherwise, returns None.
@@ -41,6 +50,7 @@ pub fn sniff_ioctl(fd: c_int, request: c_ulong, argp: *mut c_void) -> Result<Opt
         0x00 => {
             format!("WOW! An NVIDIA ioctl. {:#x} {:#x}", request, type_)
         }
+        // From kernel-open/common/inc/nv-ioctl-numbers.h:
         NV_ESC_CARD_INFO => format!("NV_ESC_CARD_INFO"),
         NV_ESC_REGISTER_FD => {
             let params = argp as *const nv_ioctl_register_fd_t;
@@ -48,6 +58,23 @@ pub fn sniff_ioctl(fd: c_int, request: c_ulong, argp: *mut c_void) -> Result<Opt
                 (*params).ctl_fd as i32
             })
         }
+        NV_ESC_ALLOC_OS_EVENT => format!("NV_ESC_ALLOC_OS_EVENT"),
+        NV_ESC_FREE_OS_EVENT => format!("NV_ESC_FREE_OS_EVENT"),
+        NV_ESC_CHECK_VERSION_STR => format!("NV_ESC_CHECK_VERSION_STR"),
+        NV_ESC_ATTACH_GPUS_TO_FD => format!("NV_ESC_ATTACH_GPUS_TO_FD"),
+        NV_ESC_SYS_PARAMS => format!("NV_ESC_SYS_PARAMS"),
+        NV_ESC_WAIT_OPEN_COMPLETE => format!("NV_ESC_WAIT_OPEN_COMPLETE"),
+
+        // From src/nvidia/arch/nvalloc/unix/include/nv_escape.h:
+        NV_ESC_RM_ALLOC_MEMORY => format!("NV_ESC_RM_ALLOC_MEMORY"),
+        NV_ESC_RM_FREE => format!("NV_ESC_RM_FREE"),
+        NV_ESC_RM_CONTROL => format!("NV_ESC_RM_CONTROL"),
+        NV_ESC_RM_ALLOC => format!("NV_ESC_RM_ALLOC"),
+        NV_ESC_RM_VID_HEAP_CONTROL => format!("NV_ESC_RM_VID_HEAP_CONTROL"),
+        NV_ESC_RM_MAP_MEMORY => format!("NV_ESC_RM_MAP_MEMORY"),
+        NV_ESC_RM_UNMAP_MEMORY => format!("NV_ESC_RM_UNMAP_MEMORY"),
+        NV_ESC_RM_UPDATE_DEVICE_MAPPING_INFO => format!("NV_ESC_RM_UPDATE_DEVICE_MAPPING_INFO"),
+
         _ => format!("UNKNOWN: {:#x} {:#x} {:#x}", nr, request, type_),
     };
 
