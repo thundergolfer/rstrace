@@ -258,6 +258,11 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                             .expect("TODO: don't assume this is write syscall");
                         let contents = dump(child, register, *size as usize, 36, true)?;
                         format!("\"{}\"", contents)
+                    },
+                    FmtSpec::Path => {
+                        // TODO: this doesn't handle paths longer than 1024 bytes
+                        let s = read_path_from_child(child, register)?;
+                        format!("\"{}\"", s)
                     }
                     _ => format!("{:#x}", register),
                 };
@@ -346,6 +351,20 @@ fn dump(
     }
     let reader = ptrace::Reader::new(pid);
     let read_size = size.min(max_blob_size);
+    let s = reader
+        .read_string(*addr, read_size)
+        .map_err(|errno| anyhow!("peekdata read string failed errno {}", errno))?;
+    Ok(String::from_utf8_lossy(s.as_slice()).to_string())
+}
+
+/// Reads a null-terminated string from the child process's memory at a given address.
+///
+/// # Arguments
+/// * `pid` - Process ID of the child process.
+/// * `addr` - Address in the child process's memory where the string begins.
+fn read_path_from_child(pid: libc::pid_t, addr: &u64) -> Result<String> {
+    let reader = ptrace::Reader::new(pid);
+    let read_size = 1024;
     let s = reader
         .read_string(*addr, read_size)
         .map_err(|errno| anyhow!("peekdata read string failed errno {}", errno))?;
