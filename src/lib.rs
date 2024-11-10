@@ -76,6 +76,7 @@ pub struct TraceOptions {
     pub t: TimestampOption,
     pub stats: StatisticsOptions,
     pub cuda_sniff: bool,
+    pub cuda_only: bool,
     pub colored_output: bool,
 }
 
@@ -218,7 +219,9 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             stat.calls += 1;
         }
 
-        let show_syscalls = options.stats.summary != SummaryOption::SummaryOnly;
+        let show_syscalls =
+            (options.stats.summary != SummaryOption::SummaryOnly) && !options.cuda_only;
+        let show_cuda = show_syscalls || options.cuda_only;
 
         if let Some((name, arg_fmts)) = SYSCALL_MAP.get(&syscall_num) {
             let mut args_str = String::new();
@@ -315,16 +318,14 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
 
         #[cfg(feature = "cuda_sniff")]
         {
-            if options.cuda_sniff && syscall_num == IOCTL_N {
+            if show_cuda && syscall_num == IOCTL_N {
                 let fd = syscall_arg_registers.get(0).expect("must exist for ioctl");
                 let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
                 let argp = syscall_arg_registers.get(2).expect("must exist for ioctl") as *const u64
                     as *mut libc::c_void;
                 if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp)? {
-                    if show_syscalls {
-                        let ioctl = render_cuda(options.colored_output, ioctl);
-                        writeln!(output, "  {}{}", t, ioctl)?;
-                    }
+                    let ioctl = render_cuda(options.colored_output, ioctl);
+                    writeln!(output, "  {}{}", t, ioctl)?;
                 }
             }
         }

@@ -71,6 +71,13 @@ struct Cli {
     cuda_sniff: bool,
 
     #[clap(
+        long = "cuda-only",
+        help = "Enable CUDA ioctl sniffing and disable all other output. [Requires 'cuda_sniff' feature]",
+        action = ArgAction::SetTrue
+    )]
+    cuda_only: bool,
+
+    #[clap(
         short = 'p',
         long = "attach",
         help = "Attach to the process with the process ID pid and begin tracing.",
@@ -117,11 +124,17 @@ fn main() -> Result<()> {
     };
     if !cfg!(feature = "cuda_sniff") && cli.cuda_sniff {
         anyhow::bail!("--cuda requires the 'cuda_sniff' feature to be enabled");
+    } else if !cfg!(feature = "cuda_sniff") && cli.cuda_only {
+        anyhow::bail!("--cuda-only requires the 'cuda_sniff' feature to be enabled");
+    } else if cfg!(feature = "cuda_sniff") && cli.cuda_only && s != rstrace::SummaryOption::None {
+        anyhow::bail!("--cuda-only and --summary cannot be used together");
     }
+
     let options = rstrace::TraceOptions {
         t,
         stats: rstrace::StatisticsOptions { summary: s },
         cuda_sniff: cli.cuda_sniff,
+        cuda_only: cli.cuda_only,
         colored_output: cli.color,
         ..Default::default()
     };
