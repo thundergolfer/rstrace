@@ -319,7 +319,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                 if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp)? {
                     if show_syscalls {
                         let ioctl = render_cuda(options.colored_output, ioctl);
-                        writeln!(output, "{}{}", t, ioctl)?;
+                        writeln!(output, "  {}{}", t, ioctl)?;
                     }
                 }
             }
