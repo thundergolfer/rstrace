@@ -77,6 +77,14 @@ struct Cli {
         requires = "pid"
     )]
     pid: Option<i32>,
+
+    #[clap(
+        long = "color",
+        help = "Enable colored output",
+        action = ArgAction::SetTrue,
+        default_value_t = false
+    )]
+    color: bool,
 }
 
 fn main() -> Result<()> {
@@ -114,6 +122,7 @@ fn main() -> Result<()> {
         t,
         stats: rstrace::StatisticsOptions { summary: s },
         cuda_sniff: cli.cuda_sniff,
+        colored_output: cli.color,
         ..Default::default()
     };
 

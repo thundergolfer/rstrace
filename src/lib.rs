@@ -20,6 +20,7 @@ use nix::{
     unistd::Pid,
 };
 use statistics::summary_to_table;
+use terminal::render_syscall;
 use tracing::{debug, trace, warn};
 
 use crate::{
@@ -33,6 +34,7 @@ mod cuda_sniff;
 pub mod info;
 pub mod ptrace;
 pub mod statistics;
+mod terminal;
 
 /// Timestamp options for tracing.
 /// Copies the -t{tt} flags from strace.
@@ -74,6 +76,7 @@ pub struct TraceOptions {
     pub t: TimestampOption,
     pub stats: StatisticsOptions,
     pub cuda_sniff: bool,
+    pub colored_output: bool,
 }
 
 unsafe fn do_child<T, S>(args: T) -> Result<()>
@@ -272,6 +275,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             }
 
             if show_syscalls {
+                let name = render_syscall(options.colored_output, name, syscall_num);
                 write!(output, "{}{}({}) = ", t, name, args_str)?;
             }
         } else {
