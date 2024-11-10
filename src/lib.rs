@@ -271,23 +271,6 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                     args_str.push_str(", ");
                 }
             }
-
-            #[cfg(feature = "cuda_sniff")]
-            {
-                if options.cuda_sniff && syscall_num == IOCTL_N {
-                    let fd = syscall_arg_registers.get(0).expect("must exist for ioctl");
-                    let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
-                    let argp = syscall_arg_registers.get(2).expect("must exist for ioctl")
-                        as *const u64 as *mut libc::c_void;
-                    if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp)? {
-                        if show_syscalls {
-                            let ioctl = render_cuda(options.colored_output, ioctl);
-                            writeln!(output, "{}{}", t, ioctl)?;
-                        }
-                    }
-                }
-            }
-
             if show_syscalls {
                 let name = render_syscall(options.colored_output, name, syscall_num);
                 write!(output, "{}{}({}) = ", t, name, args_str)?;
@@ -323,6 +306,22 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             let retval = registers.rax;
             if show_syscalls {
                 writeln!(output, "{}", retval)?;
+            }
+        }
+
+        #[cfg(feature = "cuda_sniff")]
+        {
+            if options.cuda_sniff && syscall_num == IOCTL_N {
+                let fd = syscall_arg_registers.get(0).expect("must exist for ioctl");
+                let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
+                let argp = syscall_arg_registers.get(2).expect("must exist for ioctl")
+                    as *const u64 as *mut libc::c_void;
+                if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp)? {
+                    if show_syscalls {
+                        let ioctl = render_cuda(options.colored_output, ioctl);
+                        writeln!(output, "{}{}", t, ioctl)?;
+                    }
+                }
             }
         }
     }
