@@ -67,6 +67,9 @@ pub fn sniff_ioctl(fd: c_int, request: c_ulong, argp: *mut c_void) -> Result<Opt
         NV_ESC_SYS_PARAMS => format!("NV_ESC_SYS_PARAMS"),
         NV_ESC_WAIT_OPEN_COMPLETE => format!("NV_ESC_WAIT_OPEN_COMPLETE"),
 
+        // From kernel-open/common/inc/nv-ioctl-numa.h:
+        NV_ESC_NUMA_INFO => format!("NV_ESC_NUMA_INFO"),
+
         // From src/nvidia/arch/nvalloc/unix/include/nv_escape.h:
         NV_ESC_RM_ALLOC_MEMORY => {
             let params = argp as *const nv_ioctl_nvos02_parameters_with_fd;
