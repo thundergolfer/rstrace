@@ -28,8 +28,11 @@ Options:
   -c, --summary-only     Count time, calls, and errors for each syscall and report summary
   -C, --summary          like -c, but also print the regular output
   -j, --summary-json     Count time, calls, and errors for each syscall and report summary in JSON format
+      --tef              Emit Trace Event Format (TEF) trace data as output
       --cuda             Enable CUDA ioctl sniffing. [Requires 'cuda_sniff' feature]
+      --cuda-only        Enable CUDA ioctl sniffing and disable all other output. [Requires 'cuda_sniff' feature]
   -p, --attach <PID>     Attach to the process with the process ID pid and begin tracing.
+      --color            Enable colored output
   -h, --help             Print help
   -V, --version          Print version
 ```
