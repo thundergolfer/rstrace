@@ -184,6 +184,11 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
     }
 
     let mut summary_stats: HashMap<u64, SyscallStat> = HashMap::new();
+    let mut tef = if options.tef {
+        Some(tef::TefWriter::new())
+    } else {
+        None
+    };
 
     loop {
         if wait_for_syscall(child)? {
@@ -230,7 +235,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             (options.stats.summary != SummaryOption::SummaryOnly) && !options.cuda_only;
         let show_cuda = show_syscalls || options.cuda_only;
 
-        if let Some((name, arg_fmts)) = SYSCALL_MAP.get(&syscall_num) {
+        let name = if let Some((name, arg_fmts)) = SYSCALL_MAP.get(&syscall_num) {
             let mut args_str = String::new();
             let zipped = syscall_arg_registers
                 .iter()
@@ -252,8 +257,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         format!("\"{}\"", contents)
                     }
                     FmtSpec::FD => {
-                        if i == 0 && syscall_num == OPENAT_N && *register as i32 == AT_FDCWD
-                        {
+                        if i == 0 && syscall_num == OPENAT_N && *register as i32 == AT_FDCWD {
                             "AT_FDCWD".to_string()
                         } else {
                             // TODO: resolve to path
@@ -286,16 +290,24 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                 }
             }
             if show_syscalls {
-                let name = render_syscall(options.colored_output, name, syscall_num);
-                write!(output, "{}{}({}) = ", t, name, args_str)?;
+                if let Some(ref mut tef) = tef {
+                    let e = tef.emit_duration_start(name, trace_start.elapsed().as_micros() as u64);
+                    write!(output, "{}", e)?;
+                } else {
+                    let name = render_syscall(options.colored_output, name, syscall_num);
+                    write!(output, "{}{}({}) = ", t, name, args_str)?;
+                }
             }
+
+            name
         } else {
             warn!("unknown syscall number {}", syscall_num);
             // "Syscalls unknown to strace are printed raw, with the unknown system call number printed in hexadecimal form and prefixed with "syscall_":"
             if show_syscalls {
                 write!(output, "{}syscall_{:#x} = ", t, syscall_num)?;
             }
-        }
+            "unknown"
+        };
 
         // Wait for the syscall to complete
         let start = std::time::Instant::now();
@@ -314,12 +326,22 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             let errno = registers.rax as i64;
             let err_name: Errno = Errno::from_raw(errno as i32);
             if show_syscalls {
-                writeln!(output, "{} {}", errno, err_name)?;
+                if let Some(ref mut tef) = tef {
+                    let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
+                    write!(output, "{}", e)?;
+                } else {
+                    writeln!(output, "{} {}", errno, err_name)?;
+                }
             }
         } else {
             let retval = registers.rax;
             if show_syscalls {
-                writeln!(output, "{}", retval)?;
+                if let Some(ref mut tef) = tef {
+                    let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
+                    write!(output, "{}", e)?;
+                } else {
+                    writeln!(output, "{}", retval)?;
+                }
             }
         }
 
@@ -343,6 +365,10 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
     if options.stats.summary != SummaryOption::None {
         let s = summary_to_table(summary_stats, trace_duration);
         writeln!(output, "{}", s)?;
+    }
+
+    if let Some(ref mut tef) = tef {
+        tef.finalize(output, trace_start.elapsed().as_micros() as u64)?;
     }
 
     Ok(())

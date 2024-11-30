@@ -4,38 +4,50 @@
 //! Perfetto, and Catapult.
 //!
 //! ref: <https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU>.
+use std::io::Write;
 
-use std::io::{self, Write};
-use std::time::Duration;
-
-pub struct TefWriter<'a> {
-    output: &'a mut dyn Write,
+pub struct TefWriter {
+    started: bool,
 }
 
-impl<'a> TefWriter<'a> {
-    pub fn new(output: &'a mut dyn Write) -> io::Result<Self> {
-        output.write_all(b"[\n")?;
-        Ok(TefWriter { output })
+impl TefWriter {
+    pub fn new() -> Self {
+        TefWriter { started: false }
     }
 
-    pub fn emit_event(&mut self, name: &str, timestamp: u64, duration: Duration) -> io::Result<()> {
-        let d_secs = duration.as_secs_f64();
+    // TODO(Jonathon): include args in the event.
+    pub fn emit_duration_start(&mut self, name: &str, timestamp: u64) -> String {
         let e = format!(
-            "{{\"name\": \"{name}\", \"ts\": {timestamp}, \"dur\": {d_secs}, \"cat\": \"hi\", \"ph\": \"X\", \"pid\": 1, \"tid\": 1, \"args\": {{}}}}\n"
+            "{{\"name\": \"{name}\", \"ts\": {timestamp}, \"cat\": \"hi\", \"ph\": \"B\", \"pid\": 1, \"tid\": 1, \"args\": {{}}}},\n"
         );
 
-        writeln!(self.output, "{}", e)
+        self.emit_event(e)
     }
-}
 
-impl<'a> Drop for TefWriter<'a> {
-    fn drop(&mut self) {
-        // NB: This closing bracket isn't actually required by the spec.
-        if let Err(e) = self.output.write_all(b"\n]") {
-            eprintln!("failed to write closing bracket: {}", e);
+    // TODO(Jonathon): include args and exit code (+ errno) in the event.
+    pub fn emit_duration_end(&mut self, name: &str, timestamp: u64) -> String {
+        let e = format!(
+            "{{\"name\": \"{name}\", \"ts\": {timestamp}, \"cat\": \"hi\", \"ph\": \"E\", \"pid\": 1, \"tid\": 1, \"args\": {{}}}},\n"
+        );
+        self.emit_event(e)
+    }
+
+    fn emit_event(&mut self, e: String) -> String {
+        if !self.started {
+            self.started = true;
+            format!("[\n{e}") // Begin the JSON array.
+        } else {
+            e
         }
-        if let Err(e) = self.output.flush() {
-            eprintln!("failed to flush output: {}", e);
-        }
+    }
+
+    /// Even though the TEF spec does not require that trace files are valid JSON,
+    /// <ui.perfetto.dev> crashes with an assertion error if we do not emit valid JSON.
+    pub fn finalize(&mut self, output: &mut dyn Write, timestamp: u64) -> std::io::Result<()> {
+        // NB: emitting a final event is easier than removing the last comma of the previous event.
+        let final_event = format!("{{\"name\": \"END\", \"ts\": {timestamp}, \"dur\": 0, \"cat\": \"hi\", \"ph\": \"X\", \"pid\": 1, \"tid\": 1, \"args\": {{}}}}\n");
+        output.write(&mut self.emit_event(final_event).as_bytes())?;
+        output.write_all(b"]")?;
+        Ok(())
     }
 }

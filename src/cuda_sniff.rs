@@ -56,9 +56,7 @@ pub fn sniff_ioctl(fd: c_int, request: c_ulong, argp: *mut c_void) -> Result<Opt
         NV_ESC_CARD_INFO => format!("NV_ESC_CARD_INFO"),
         NV_ESC_REGISTER_FD => {
             let params = argp as *const nv_ioctl_register_fd_t;
-            format!("NV_ESC_REGISTER_FD fd: {}", unsafe {
-                (*params).ctl_fd
-            })
+            format!("NV_ESC_REGISTER_FD fd: {}", unsafe { (*params).ctl_fd })
         }
         NV_ESC_ALLOC_OS_EVENT => format!("NV_ESC_ALLOC_OS_EVENT"),
         NV_ESC_FREE_OS_EVENT => format!("NV_ESC_FREE_OS_EVENT"),
