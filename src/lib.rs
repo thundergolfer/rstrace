@@ -34,6 +34,7 @@ mod cuda_sniff;
 pub mod info;
 pub mod ptrace;
 pub mod statistics;
+mod tef;
 mod terminal;
 
 /// Timestamp options for tracing.
@@ -73,11 +74,18 @@ pub struct StatisticsOptions {
 #[allow(missing_docs)]
 #[derive(Debug, Clone, Default)]
 pub struct TraceOptions {
+    /// How to format timestamps.
     pub t: TimestampOption,
+    /// Whether to include statistics (summary mode).
     pub stats: StatisticsOptions,
+    /// Whether to include CUDA-related output.
     pub cuda_sniff: bool,
+    /// Whether to only show CUDA-related output.
     pub cuda_only: bool,
+    /// Whether to emit colored output.
     pub colored_output: bool,
+    /// Whether to emit TEF trace data.
+    pub tef: bool,
 }
 
 unsafe fn do_child<T, S>(args: T) -> Result<()>
@@ -159,7 +167,6 @@ fn wait_for_syscall(child: i32) -> Result<bool> {
 fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) -> Result<()> {
     debug!(%child, "starting trace of child");
     let trace_start = std::time::Instant::now();
-    let _ = child;
     // Wait until child has sent itself the SIGSTOP above, and is ready to be
     // traced.
     let status = nix::sys::wait::waitpid(Pid::from_raw(child), None)?;

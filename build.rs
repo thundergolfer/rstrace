@@ -69,7 +69,12 @@ fn fetch_open_gpu_kernel_modules_headers() {
         )
         .header(common_inc_headers_path.join("nvlimits.h").to_str().unwrap())
         .header(common_inc_headers_path.join("nv-ioctl.h").to_str().unwrap())
-        .header(common_inc_headers_path.join("nv-ioctl-numa.h").to_str().unwrap())
+        .header(
+            common_inc_headers_path
+                .join("nv-ioctl-numa.h")
+                .to_str()
+                .unwrap(),
+        )
         .generate()
         .expect("Unable to generate kernel-open/common/inc bindings");
 

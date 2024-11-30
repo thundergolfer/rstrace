@@ -64,6 +64,12 @@ struct Cli {
     summary_json: bool,
 
     #[clap(
+        long = "tef",
+        help = "Emit Trace Event Format (TEF) trace data as output"
+    )]
+    tef: bool,
+
+    #[clap(
         long = "cuda",
         help = "Enable CUDA ioctl sniffing. [Requires 'cuda_sniff' feature]",
         action = ArgAction::SetTrue
@@ -122,6 +128,9 @@ fn main() -> Result<()> {
         (false, false, true) => rstrace::SummaryOption::Summary,
         _ => rstrace::SummaryOption::None,
     };
+    if cli.tef && s != rstrace::SummaryOption::None {
+        anyhow::bail!("--tef cannot be used together with summary output");
+    }
     if !cfg!(feature = "cuda_sniff") && cli.cuda_sniff {
         anyhow::bail!("--cuda requires the 'cuda_sniff' feature to be enabled");
     } else if !cfg!(feature = "cuda_sniff") && cli.cuda_only {
@@ -136,6 +145,7 @@ fn main() -> Result<()> {
         cuda_sniff: cli.cuda_sniff,
         cuda_only: cli.cuda_only,
         colored_output: cli.color,
+        tef: cli.tef,
         ..Default::default()
     };
 
