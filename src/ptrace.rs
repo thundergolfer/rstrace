@@ -89,7 +89,7 @@ pub enum Event {
 impl Event {
     pub fn from_wait_status(st: i32) -> Option<Event> {
         let e: Option<Event> = FromPrimitive::from_i32(((st >> 8) & !5) >> 8);
-        return e;
+        e
     }
 }
 
@@ -320,7 +320,7 @@ impl Writer {
         let max_addr = address + buf.len() as Address;
         // The last word we can completely overwrite
         let align_end = max_addr - (max_addr % mem::size_of::<Word>() as Address);
-        for write_addr in (address..align_end).step_by(mem::size_of::<Word>() as usize) {
+        for write_addr in (address..align_end).step_by(mem::size_of::<Word>()) {
             let mut d: Word = 0;
             let buf_idx = (write_addr - address) as usize;
             for word_idx in 0..mem::size_of::<Word>() {
@@ -354,7 +354,7 @@ impl Writer {
 
 impl Reader {
     pub fn new(pid: libc::pid_t) -> Reader {
-        Reader { pid: pid }
+        Reader { pid }
     }
 
     pub fn peek_data(&self, address: Address) -> Result<Word, i32> {
@@ -378,12 +378,11 @@ impl Reader {
         let mut buf: Vec<u8> = Vec::with_capacity(size);
         let max_addr = address + buf.capacity() as Address;
         let align_end = max_addr - (max_addr % mem::size_of::<Word>() as Address);
-        'finish: for read_addr in (address..align_end).step_by(mem::size_of::<Word>() as usize) {
-            let d;
-            match self.peek_data(read_addr) {
-                Ok(v) => d = v,
+        'finish: for read_addr in (address..align_end).step_by(mem::size_of::<Word>()) {
+            let d = match self.peek_data(read_addr) {
+                Ok(v) => v,
                 Err(e) => return Err(e),
-            }
+            };
             for word_idx in 0..mem::size_of::<Word>() {
                 let chr = get_byte(d, word_idx);
                 if chr == 0 {
@@ -394,11 +393,10 @@ impl Reader {
             }
         }
         if !end_of_str {
-            let d;
-            match self.peek_data(align_end) {
-                Ok(v) => d = v,
+            let d = match self.peek_data(align_end) {
+                Ok(v) => v,
                 Err(e) => return Err(e),
-            }
+            };
             for word_idx in 0..mem::size_of::<Word>() {
                 let chr = get_byte(d, word_idx);
                 if chr == 0 {
@@ -407,7 +405,7 @@ impl Reader {
                 buf.push(chr);
             }
         }
-        return Ok(buf);
+        Ok(buf)
     }
 }
 

@@ -98,7 +98,7 @@ where
         .map(|arg| CString::new(arg.as_ref()).expect("CString::new failed"))
         .collect();
 
-    let child_prog = cstrings.get(0).unwrap().clone();
+    let child_prog = cstrings.first().unwrap().clone();
     debug!(?child_prog, "starting child");
 
     let child_prog = child_prog.into_raw();
@@ -193,7 +193,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed errno {}", errno))?;
         let syscall_num = registers.orig_rax;
 
-        let syscall_arg_registers = vec![
+        let syscall_arg_registers = [
             registers.rdi,
             registers.rsi,
             registers.rdx,
@@ -252,7 +252,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         format!("\"{}\"", contents)
                     }
                     FmtSpec::FD => {
-                        if i == 0 && syscall_num == OPENAT_N && *register as i32 == AT_FDCWD as i32
+                        if i == 0 && syscall_num == OPENAT_N && *register as i32 == AT_FDCWD
                         {
                             "AT_FDCWD".to_string()
                         } else {
@@ -326,7 +326,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         #[cfg(feature = "cuda_sniff")]
         {
             if show_cuda && syscall_num == IOCTL_N {
-                let fd = syscall_arg_registers.get(0).expect("must exist for ioctl");
+                let fd = syscall_arg_registers.first().expect("must exist for ioctl");
                 let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
                 let argp = syscall_arg_registers.get(2).expect("must exist for ioctl") as *const u64
                     as *mut libc::c_void;
@@ -383,7 +383,7 @@ fn read_path_from_child(pid: libc::pid_t, addr: &u64) -> Result<String> {
 }
 
 /// Takes an iterable of arguments to create a traced process.
-pub unsafe fn trace_command<T, S, W>(args: T, output: &mut W, options: TraceOptions) -> Result<()>
+pub fn trace_command<T, S, W>(args: T, output: &mut W, options: TraceOptions) -> Result<()>
 where
     T: IntoIterator<Item = S>,
     S: AsRef<str>,
@@ -405,7 +405,7 @@ where
 }
 
 /// Takes a process ID (PID) and traces it.
-pub unsafe fn trace_attach(
+pub fn trace_attach(
     pid: i32,
     output: &mut dyn std::io::Write,
     options: TraceOptions,

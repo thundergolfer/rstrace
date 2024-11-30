@@ -153,7 +153,7 @@ fn main() -> Result<()> {
         if !cli.args.is_empty() {
             eprintln!("WARN: ignoring command arguments when attaching to a process");
         }
-        unsafe { trace_attach(pid, &mut output, options) }
+        trace_attach(pid, &mut output, options)
     } else {
         if cli.args.is_empty() {
             anyhow::bail!(
@@ -162,6 +162,6 @@ fn main() -> Result<()> {
                 NAME
             );
         }
-        unsafe { trace_command(cli.args.into_iter(), &mut output, options) }
+        trace_command(cli.args.into_iter(), &mut output, options)
     }
 }
