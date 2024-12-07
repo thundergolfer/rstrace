@@ -11,3 +11,6 @@ libc = { workspace = true }
 
 [build-dependencies]
 bindgen = "0.65.1"
+
+[lib]
+doctest = false # https://github.com/rust-lang/rust-bindgen/issues/1313
