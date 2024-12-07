@@ -24,18 +24,18 @@ use terminal::{render_cuda, render_syscall};
 use tracing::{debug, trace, warn};
 
 use crate::{
-    cuda_sniff::sniff_ioctl,
     info::{FmtSpec, SYSCALL_MAP},
     statistics::SyscallStat,
 };
 #[allow(dead_code, non_upper_case_globals)]
-#[cfg(feature = "cuda_sniff")]
-mod cuda_sniff;
 pub mod info;
 pub mod ptrace;
 pub mod statistics;
 mod tef;
 mod terminal;
+
+#[cfg(feature = "cuda_sniff")]
+use rstrace_cuda_sniff::sniff_ioctl;
 
 /// Timestamp options for tracing.
 /// Copies the -t{tt} flags from strace.

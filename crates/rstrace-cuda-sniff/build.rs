@@ -114,10 +114,7 @@ fn fetch_open_gpu_kernel_modules_headers() {
 
 #[cfg(target_os = "linux")]
 fn main() {
-    let cuda_sniff_enabled = env::var("CARGO_FEATURE_CUDA_SNIFF").is_ok();
-    if cuda_sniff_enabled {
-        fetch_open_gpu_kernel_modules_headers();
-    }
+    fetch_open_gpu_kernel_modules_headers();
 }
 
 #[cfg(not(target_os = "linux"))]

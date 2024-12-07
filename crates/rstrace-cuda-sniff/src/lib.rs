@@ -2,6 +2,8 @@
 //! The original implementation used library interposition. This does not
 //! provide interposition functionality, and instead is intended to be called by
 //! a syscall tracer.
+#![allow(dead_code, non_upper_case_globals)]
+
 use anyhow::Result;
 use libc::{c_int, c_ulong, c_void};
 
