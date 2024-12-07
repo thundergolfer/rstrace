@@ -87,7 +87,6 @@ struct Cli {
         short = 'p',
         long = "attach",
         help = "Attach to the process with the process ID pid and begin tracing.",
-        requires = "pid"
     )]
     pid: Option<i32>,
 
