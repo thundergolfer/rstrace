@@ -5,7 +5,6 @@ members = [
     "crates/rstrace-cuda-sniff",
 ]
 resolver = "2"
-default-run = "crates/rstrace"
 
 [workspace.dependencies]
 rstrace = { path = "crates/rstrace" }
