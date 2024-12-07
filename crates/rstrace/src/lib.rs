@@ -312,6 +312,11 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         // Wait for the syscall to complete
         let start = std::time::Instant::now();
         if wait_for_syscall(child)? {
+            // Handle the fact that the child has exited before we know the return value
+            // of the current syscall.
+            if show_syscalls {
+                writeln!(output, "?")?;
+            }
             break;
         }
         let duration = start.elapsed();
