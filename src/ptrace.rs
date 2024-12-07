@@ -245,7 +245,7 @@ impl Syscall {
     pub fn from_pid(pid: libc::pid_t) -> Result<Syscall, i32> {
         match getregs(pid) {
             Ok(regs) => Ok(Syscall {
-                pid: pid,
+                pid,
                 call: regs.orig_rax,
                 args: [regs.rdi, regs.rsi, regs.rdx, regs.rcx, regs.r8, regs.r9],
                 return_val: 0,
@@ -284,7 +284,7 @@ pub struct Writer {
 
 impl Writer {
     pub fn new(pid: libc::pid_t) -> Self {
-        Writer { pid: pid }
+        Writer { pid }
     }
 
     pub fn poke_data(&self, address: Address, data: Word) -> Result<Word, i32> {

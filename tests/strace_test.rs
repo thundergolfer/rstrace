@@ -35,7 +35,7 @@ fn test_trace_echo() -> Result<()> {
         ..Default::default()
     };
     let program = vec!["echo".to_string(), "hello".into()];
-    unsafe { trace_command(&program, &mut f, options).unwrap() };
+    trace_command(&program, &mut f, options).unwrap();
     let r_strace_output = String::from_utf8(f.into_inner().unwrap())?;
     println!("{}", r_strace_output);
 
