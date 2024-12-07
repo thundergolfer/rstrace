@@ -235,6 +235,34 @@ pub const EXIT_GROUP_N: u64 = 231;
 /// The number of the openat syscall.
 pub const OPENAT_N: u64 = 257;
 
+/// The return code of a syscall.
+#[derive(Debug, Copy, Clone)]
+pub enum RetCode {
+    /// The syscall returned successfully.
+    Ok(i32),
+
+    /// The syscall returned an error.
+    Err(i32),
+
+    /// The syscall returned an address.
+    /// e.g. mmap returns a pointer to the mapped area.
+    Address(usize),
+}
+
+impl RetCode {
+    /// Convert a raw return code to a `RetCode`.
+    pub fn from_raw(ret_code: u64) -> Self {
+        let ret_i32 = ret_code as isize;
+        if ret_i32 == isize::MIN || ret_i32.abs() > 0x8000 {
+            Self::Address(ret_code as usize)
+        } else if ret_i32 < 0 {
+            Self::Err(ret_i32 as i32)
+        } else {
+            Self::Ok(ret_i32 as i32)
+        }
+    }
+}
+
 lazy_static! {
     /// Map from a syscall's number to its name and a vector of its argument formats.
     pub static ref SYSCALL_MAP: HashMap<u64, (&'static str, Vec<FmtSpec>)> = {

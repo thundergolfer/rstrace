@@ -86,7 +86,7 @@ struct Cli {
     #[clap(
         short = 'p',
         long = "attach",
-        help = "Attach to the process with the process ID pid and begin tracing.",
+        help = "Attach to the process with the process ID pid and begin tracing."
     )]
     pid: Option<i32>,
 

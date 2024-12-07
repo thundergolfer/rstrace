@@ -12,7 +12,7 @@ use std::ptr;
 use std::{collections::HashMap, ffi::CString};
 
 use anyhow::{anyhow, bail, Result};
-use info::{IOCTL_N, OPENAT_N};
+use info::{RetCode, IOCTL_N, OPENAT_N};
 use libc::{self, AT_FDCWD};
 use nix::errno::Errno;
 use nix::{
@@ -327,28 +327,61 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
 
         let registers =
             ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed: errno {}", errno))?;
-        if registers.rax & (1 << 63) != 0 {
-            let errno = registers.rax as i64;
-            let err_name: Errno = Errno::from_raw(errno as i32);
-            if show_syscalls {
-                if let Some(ref mut tef) = tef {
-                    let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
-                    write!(output, "{}", e)?;
-                } else {
-                    writeln!(output, "{} {}", errno, err_name)?;
+        let ret_code = RetCode::from_raw(registers.rax);
+        if show_syscalls {
+            match ret_code {
+                RetCode::Err(errno) => {
+                    let err_name: Errno = Errno::from_raw(errno as i32);
+                    if let Some(ref mut tef) = tef {
+                        let e =
+                            tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
+                        write!(output, "{}", e)?;
+                    } else {
+                        writeln!(output, "{} {}", errno, err_name)?;
+                    }
                 }
-            }
-        } else {
-            let retval = registers.rax;
-            if show_syscalls {
-                if let Some(ref mut tef) = tef {
-                    let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
-                    write!(output, "{}", e)?;
-                } else {
-                    writeln!(output, "{}", retval)?;
+                RetCode::Address(addr) => {
+                    if let Some(ref mut tef) = tef {
+                        let e =
+                            tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
+                        write!(output, "{}", e)?;
+                    } else {
+                        writeln!(output, "{:#X}", addr)?;
+                    }
+                }
+                RetCode::Ok(retval) => {
+                    if let Some(ref mut tef) = tef {
+                        let e =
+                            tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
+                        write!(output, "{}", e)?;
+                    } else {
+                        writeln!(output, "{}", retval)?;
+                    }
                 }
             }
         }
+        // if 1 != 0 {
+        //     let errno = registers.rax as i64;
+        //     let err_name: Errno = Errno::from_raw(errno as i32);
+        //     if show_syscalls {
+        //         if let Some(ref mut tef) = tef {
+        //             let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
+        //             write!(output, "{}", e)?;
+        //         } else {
+        //             writeln!(output, "{} {}", errno, err_name)?;
+        //         }
+        //     }
+        // } else {
+        //     let retval = registers.rax;
+        //     if show_syscalls {
+        //         if let Some(ref mut tef) = tef {
+        //             let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
+        //             write!(output, "{}", e)?;
+        //         } else {
+        //             writeln!(output, "{}", retval)?;
+        //         }
+        //     }
+        // }
 
         #[cfg(feature = "cuda_sniff")]
         {
