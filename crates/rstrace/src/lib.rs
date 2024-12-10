@@ -20,7 +20,10 @@ use nix::{
     unistd::Pid,
 };
 use statistics::summary_to_table;
-use terminal::{render_cuda, render_syscall};
+use terminal::{
+    render_cuda, render_syscall, render_syscall_return_addr, render_syscall_return_err,
+    render_syscall_return_success,
+};
 use tracing::{debug, trace, warn};
 
 use crate::{
@@ -337,7 +340,11 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                             tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
                         write!(output, "{}", e)?;
                     } else {
-                        writeln!(output, "{} {}", errno, err_name)?;
+                        writeln!(
+                            output,
+                            "{}",
+                            render_syscall_return_err(options.colored_output, errno, err_name)
+                        )?;
                     }
                 }
                 RetCode::Address(addr) => {
@@ -346,7 +353,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                             tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
                         write!(output, "{}", e)?;
                     } else {
-                        writeln!(output, "{:#X}", addr)?;
+                        let addr = render_syscall_return_addr(options.colored_output, addr);
+                        writeln!(output, "{}", addr)?;
                     }
                 }
                 RetCode::Ok(retval) => {
@@ -355,7 +363,11 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                             tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
                         write!(output, "{}", e)?;
                     } else {
-                        writeln!(output, "{}", retval)?;
+                        writeln!(
+                            output,
+                            "{}",
+                            render_syscall_return_success(options.colored_output, retval)
+                        )?;
                     }
                 }
             }
