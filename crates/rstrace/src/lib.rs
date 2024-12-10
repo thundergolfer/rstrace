@@ -360,28 +360,6 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                 }
             }
         }
-        // if 1 != 0 {
-        //     let errno = registers.rax as i64;
-        //     let err_name: Errno = Errno::from_raw(errno as i32);
-        //     if show_syscalls {
-        //         if let Some(ref mut tef) = tef {
-        //             let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
-        //             write!(output, "{}", e)?;
-        //         } else {
-        //             writeln!(output, "{} {}", errno, err_name)?;
-        //         }
-        //     }
-        // } else {
-        //     let retval = registers.rax;
-        //     if show_syscalls {
-        //         if let Some(ref mut tef) = tef {
-        //             let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
-        //             write!(output, "{}", e)?;
-        //         } else {
-        //             writeln!(output, "{}", retval)?;
-        //         }
-        //     }
-        // }
 
         #[cfg(feature = "cuda_sniff")]
         {
