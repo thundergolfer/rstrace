@@ -87,6 +87,8 @@ pub struct TraceOptions {
     pub cuda_only: bool,
     /// Whether to emit colored output.
     pub colored_output: bool,
+    /// Whether to follow forks (ie. child processes).
+    pub follow_forks: bool,
     /// Whether to emit TEF trace data.
     pub tef: bool,
 }

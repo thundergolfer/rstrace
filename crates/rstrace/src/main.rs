@@ -91,6 +91,15 @@ struct Cli {
     pid: Option<i32>,
 
     #[clap(
+        short = 'f',
+        long = "follow-forks",
+        help = "Follow forks",
+        action = ArgAction::SetTrue,
+        default_value_t = false
+    )]
+    follow_forks: bool,
+
+    #[clap(
         long = "color",
         help = "Enable colored output",
         action = ArgAction::SetTrue,
@@ -144,6 +153,7 @@ fn main() -> Result<()> {
         cuda_sniff: cli.cuda_sniff,
         cuda_only: cli.cuda_only,
         colored_output: cli.color,
+        follow_forks: cli.follow_forks,
         tef: cli.tef,
         ..Default::default()
     };
