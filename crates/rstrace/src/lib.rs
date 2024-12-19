@@ -99,10 +99,7 @@ fn ptrace_init_options() -> Options {
 }
 
 fn ptrace_init_options_fork() -> Options {
-    ptrace_init_options()
-        | Options::TraceFork
-        | Options::TraceVFork
-        | Options::TraceClone
+    ptrace_init_options() | Options::TraceFork | Options::TraceVFork | Options::TraceClone
 }
 
 unsafe fn do_child<T, S>(args: T) -> Result<()>
@@ -387,70 +384,21 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             }
             break;
         }
-        let duration = start.elapsed();
-        if options.stats.summary != SummaryOption::None {
-            let stat = summary_stats.entry(syscall_num).or_default();
-            stat.latency += duration;
-        }
-
-        let registers =
-            ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed: errno {}", errno))?;
-        let ret_code = RetCode::from_raw(registers.rax);
-        if show_syscalls {
-            match ret_code {
-                RetCode::Err(errno) => {
-                    let err_name: Errno = Errno::from_raw(errno as i32);
-                    if let Some(ref mut tef) = tef {
-                        let e =
-                            tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
-                        write!(output, "{}", e)?;
-                    } else {
-                        writeln!(
-                            output,
-                            "{}",
-                            render_syscall_return_err(options.colored_output, errno, err_name)
-                        )?;
-                    }
-                }
-                RetCode::Address(addr) => {
-                    if let Some(ref mut tef) = tef {
-                        let e =
-                            tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
-                        write!(output, "{}", e)?;
-                    } else {
-                        let addr = render_syscall_return_addr(options.colored_output, addr);
-                        writeln!(output, "{}", addr)?;
-                    }
-                }
-                RetCode::Ok(retval) => {
-                    if let Some(ref mut tef) = tef {
-                        let e =
-                            tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
-                        write!(output, "{}", e)?;
-                    } else {
-                        writeln!(
-                            output,
-                            "{}",
-                            render_syscall_return_success(options.colored_output, retval)
-                        )?;
-                    }
-                }
-            }
-        }
-
-        #[cfg(feature = "cuda_sniff")]
-        {
-            if show_cuda && syscall_num == IOCTL_N {
-                let fd = syscall_arg_registers.first().expect("must exist for ioctl");
-                let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
-                let argp = syscall_arg_registers.get(2).expect("must exist for ioctl") as *const u64
-                    as *mut libc::c_void;
-                if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp)? {
-                    let ioctl = render_cuda(options.colored_output, ioctl);
-                    writeln!(output, "  {}{}", t, ioctl)?;
-                }
-            }
-        }
+        record_syscall_exit(
+            child,
+            name,
+            syscall_num,
+            &start,
+            &options,
+            &mut summary_stats,
+            &mut tef,
+            output,
+            show_syscalls,
+            show_cuda,
+            &trace_start,
+            &syscall_arg_registers,
+            &t,
+        )?;
     }
 
     let trace_end = std::time::Instant::now();
@@ -462,6 +410,87 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
 
     if let Some(ref mut tef) = tef {
         tef.finalize(output, trace_start.elapsed().as_micros() as u64)?;
+    }
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_syscall_exit(
+    child: libc::pid_t,
+    name: &str,
+    syscall_num: u64,
+    start: &std::time::Instant,
+    options: &TraceOptions,
+    summary_stats: &mut HashMap<u64, SyscallStat>,
+    tef: &mut Option<tef::TefWriter>,
+    output: &mut dyn std::io::Write,
+    show_syscalls: bool,
+    show_cuda: bool,
+    trace_start: &std::time::Instant,
+    syscall_arg_registers: &[u64],
+    t: &str, // timestamp
+) -> Result<()> {
+    let duration = start.elapsed();
+    if options.stats.summary != SummaryOption::None {
+        let stat = summary_stats.entry(syscall_num).or_default();
+        stat.latency += duration;
+    }
+
+    let registers =
+        ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed: errno {}", errno))?;
+    let ret_code = RetCode::from_raw(registers.rax);
+    if show_syscalls {
+        match ret_code {
+            RetCode::Err(errno) => {
+                let err_name: Errno = Errno::from_raw(errno as i32);
+                if let Some(ref mut tef) = tef {
+                    let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
+                    write!(output, "{}", e)?;
+                } else {
+                    writeln!(
+                        output,
+                        "{}",
+                        render_syscall_return_err(options.colored_output, errno, err_name)
+                    )?;
+                }
+            }
+            RetCode::Address(addr) => {
+                if let Some(ref mut tef) = tef {
+                    let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
+                    write!(output, "{}", e)?;
+                } else {
+                    let addr = render_syscall_return_addr(options.colored_output, addr);
+                    writeln!(output, "{}", addr)?;
+                }
+            }
+            RetCode::Ok(retval) => {
+                if let Some(ref mut tef) = tef {
+                    let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
+                    write!(output, "{}", e)?;
+                } else {
+                    writeln!(
+                        output,
+                        "{}",
+                        render_syscall_return_success(options.colored_output, retval)
+                    )?;
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "cuda_sniff")]
+    {
+        if show_cuda && syscall_num == IOCTL_N {
+            let fd = syscall_arg_registers.first().expect("must exist for ioctl");
+            let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
+            let argp = syscall_arg_registers.get(2).expect("must exist for ioctl") as *const u64
+                as *mut libc::c_void;
+            if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp)? {
+                let ioctl = render_cuda(options.colored_output, ioctl);
+                writeln!(output, "  {}{}", t, ioctl)?;
+            }
+        }
     }
 
     Ok(())
