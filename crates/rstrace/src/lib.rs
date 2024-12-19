@@ -15,11 +15,11 @@ use anyhow::{anyhow, bail, Result};
 use info::{RetCode, IOCTL_N, OPENAT_N};
 use libc::{self, AT_FDCWD};
 use nix::errno::Errno;
+use nix::sys::ptrace::getevent;
 use nix::{
     sys::{signal::Signal, wait::WaitStatus},
     unistd::Pid,
 };
-use nix::sys::ptrace::getevent;
 use ptrace::Options;
 use statistics::summary_to_table;
 use terminal::{
@@ -95,6 +95,13 @@ pub struct TraceOptions {
     pub tef: bool,
 }
 
+impl TraceOptions {
+    /// Whether to show syscalls by writing to the output.
+    pub fn show_syscalls(&self) -> bool {
+        (self.stats.summary != SummaryOption::SummaryOnly) && !self.cuda_only
+    }
+}
+
 fn ptrace_init_options() -> Options {
     // TODO(Jonathon): add exit and exec: ptrace::Options::TraceExit | ptrace::Options::TraceExec
     // Currently these options break things, make -38 errors show up on all syscalls.
@@ -149,7 +156,6 @@ where
     let error_name = nix::errno::Errno::from_raw(errno).desc();
     bail!("errno = {} ({})", errno, error_name)
 }
-
 
 #[derive(Debug)]
 enum PtraceSyscallInfo {
@@ -322,17 +328,12 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             stat.calls += 1;
         }
 
-        let show_syscalls =
-            (options.stats.summary != SummaryOption::SummaryOnly) && !options.cuda_only;
-        let show_cuda = show_syscalls || options.cuda_only;
-
         record_syscall_entry(
             child,
             syscall_num,
             &syscall_arg_registers,
             &options,
             output,
-            show_syscalls,
             &trace_start,
             &mut tef,
             &t,
@@ -344,7 +345,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         if exited {
             // Handle the fact that the child has exited before we know the return value
             // of the current syscall.
-            if show_syscalls {
+            if options.show_syscalls() {
                 writeln!(output, "?")?;
             }
             break;
@@ -357,8 +358,6 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             &mut summary_stats,
             &mut tef,
             output,
-            show_syscalls,
-            show_cuda,
             &trace_start,
             &syscall_arg_registers,
             &t,
@@ -386,11 +385,11 @@ fn record_syscall_entry(
     syscall_arg_registers: &[u64],
     options: &TraceOptions,
     output: &mut dyn std::io::Write,
-    show_syscalls: bool,
     trace_start: &std::time::Instant,
     tef: &mut Option<tef::TefWriter>,
     t: &str, // timestamp
 ) -> Result<()> {
+    let show_syscalls = options.show_syscalls();
     if let Some((name, arg_fmts)) = SYSCALL_MAP.get(&syscall_num) {
         let mut args_str = String::new();
         let zipped = syscall_arg_registers
@@ -472,12 +471,13 @@ fn record_syscall_exit(
     summary_stats: &mut HashMap<u64, SyscallStat>,
     tef: &mut Option<tef::TefWriter>,
     output: &mut dyn std::io::Write,
-    show_syscalls: bool,
-    show_cuda: bool,
     trace_start: &std::time::Instant,
     syscall_arg_registers: &[u64],
     t: &str, // timestamp
 ) -> Result<()> {
+    let show_syscalls = options.show_syscalls();
+    let show_cuda = show_syscalls || options.cuda_only;
+
     let name = SYSCALL_MAP
         .get(&syscall_num)
         .map(|(name, _)| name)
