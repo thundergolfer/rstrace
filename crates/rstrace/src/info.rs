@@ -230,6 +230,8 @@ use self::FmtSpec::*;
 
 /// The number of the ioctl syscall.
 pub const IOCTL_N: u64 = 16;
+/// The number of the exit syscall.
+pub const EXIT_N: u64 = 60;
 /// The number of the exit_group syscall.
 pub const EXIT_GROUP_N: u64 = 231;
 /// The number of the openat syscall.
@@ -327,7 +329,7 @@ lazy_static! {
             (57, ("fork", vec![])),
             (58, ("vfork", vec![])),
             (59, ("execve", vec![Path, ExecveStringVector, ExecveStringVector])),
-            (60, ("exit", vec![Hex])),
+            (EXIT_N, ("exit", vec![Hex])),
             (61, ("wait4", vec![Hex, Hex, Hex, Rusage])),
             (62, ("kill", vec![Hex, Signal])),
             (63, ("uname", vec![Uname])),

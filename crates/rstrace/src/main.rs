@@ -8,7 +8,6 @@
 use anyhow::Result;
 use rstrace::{trace_attach, trace_command};
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber;
 use tracing_subscriber::EnvFilter;
 
 use clap::{ArgAction, Parser};
@@ -19,7 +18,7 @@ const NAME: &str = "rstrace";
 #[clap(
     author,
     name = NAME,
-    version = "0.1.0",
+    version = "0.5.0",
     about = "A Rust implementation of strace to trace system calls and CUDA API calls."
 )]
 struct Cli {
@@ -102,9 +101,24 @@ struct Cli {
         long = "color",
         help = "Enable colored output",
         action = ArgAction::SetTrue,
-        default_value_t = false
+        default_value_t = false,
+        value_parser = clap::builder::FalseyValueParser::new(),
+        env = "FORCE_COLOR"
     )]
     color: bool,
+
+    // Attempt to follow https://no-color.org/.
+    // Note however that we don't accept *any* non-empty string.
+    #[clap(
+        long = "no-color",
+        help = None,
+        action = ArgAction::SetTrue,
+        default_value_t = false,
+        value_parser = clap::builder::FalseyValueParser::new(),
+        env = "NO_COLOR",
+        hide = true, // Not useful for this option to show up in --help.
+    )]
+    no_color: bool,
 }
 
 fn main() -> Result<()> {
@@ -146,15 +160,20 @@ fn main() -> Result<()> {
         anyhow::bail!("--cuda-only and --summary cannot be used together");
     }
 
+    // Adhere to recommendations in https://clig.dev/#output for colored output configuration.
+    let app_specific_no_color = matches!(std::env::var("RSTRACE_NO_COLOR"), Ok(s) if !s.is_empty());
+    let color = cli.color;
+    let no_color = cli.no_color || app_specific_no_color;
+    let colored_output = if no_color { false } else { color };
+
     let options = rstrace::TraceOptions {
         t,
         stats: rstrace::StatisticsOptions { summary: s },
         cuda_sniff: cli.cuda_sniff,
         cuda_only: cli.cuda_only,
-        colored_output: cli.color,
+        colored_output,
         follow_forks: cli.follow_forks,
         tef: cli.tef,
-        ..Default::default()
     };
 
     if let Some(pid) = cli.pid {
@@ -170,6 +189,6 @@ fn main() -> Result<()> {
                 NAME
             );
         }
-        trace_command(cli.args.into_iter(), &mut output, options)
+        trace_command(cli.args, &mut output, options)
     }
 }

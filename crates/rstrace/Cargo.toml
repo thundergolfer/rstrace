@@ -1,19 +1,19 @@
 [package]
 name = "rstrace"
-version = "0.2.2"
+version = "0.5.0"
 edition = "2021"
 license = "MIT"
 description = "A Rust implementation of strace to trace system calls and CUDA API calls."
 homepage = "https://github.com/thundergolfer/strace-rs"
 repository = "https://github.com/thundergolfer/strace-rs"
-readme = "README.md"
+readme = "../../README.md"
 keywords = ["strace", "syscall", "CUDA", "tracing"]
 categories = ["development-tools"]
 
 [dependencies]
 anyhow = "1.0.86"
 bitflags = "2.5.0"
-clap = { version = "4.5.18", features = ["derive"] }
+clap = { version = "4.5.18", features = ["derive", "env"] }
 lazy_static = "1.4.0"
 libc = "0.2.139"
 nix = { version = "0.28.0", features = ["process", "ptrace"] }
@@ -22,7 +22,7 @@ num = "0.4.3"
 num-derive = "0.4.2"
 num-traits = "0.2.19"
 prettytable-rs = "0.10.0"
-rstrace-cuda-sniff = { workspace = true }
+rstrace-cuda-sniff = { workspace = true, version = "0.2.0" }
 time = { version = "0.3.36", features = ["formatting", "parsing", "local-offset"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

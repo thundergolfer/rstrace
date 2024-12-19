@@ -8,6 +8,20 @@
 
 rstrace is a Rust implementation of `strace`. It allows the user to trace system calls of a process or command.
 
+## Install
+
+### Binary download
+
+<!-- curl -LsSf https://raw.githubusercontent.com/thundergolfer/rstrace/refs/heads/main/scripts/install.sh | sh -->
+
+```bash
+curl -LsSf https://rstrace.xyz/install.sh | sh
+```
+
+### Cargo
+
+`cargo install rstrace`
+
 ## Usage
 
 ```bash
