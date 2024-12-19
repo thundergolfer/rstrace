@@ -19,6 +19,7 @@ use nix::{
     sys::{signal::Signal, wait::WaitStatus},
     unistd::Pid,
 };
+use nix::sys::ptrace::getevent;
 use ptrace::Options;
 use statistics::summary_to_table;
 use terminal::{
@@ -149,9 +150,19 @@ where
     bail!("errno = {} ({})", errno, error_name)
 }
 
+
+#[derive(Debug)]
+enum PtraceSyscallInfo {
+    None = 0,
+    Entry = 1,
+    Exit = 2,
+    Seccomp = 3,
+    Unknown = 4,
+}
+
 // Run the child until either entry to or exit from a system call.
 // If it returns false, the child has exited.
-fn wait_for_syscall(child: i32) -> Result<bool> {
+fn wait_for_syscall(child: i32) -> Result<(bool, Option<PtraceSyscallInfo>)> {
     loop {
         _ = ptrace::syscall(child)
             .map_err(|errno| anyhow!("SINGLESTEP failed. errno {}", errno))?;
@@ -160,15 +171,27 @@ fn wait_for_syscall(child: i32) -> Result<bool> {
         match status {
             WaitStatus::Exited(_, code) => {
                 debug!("{} signalled exited. exit code: {:?}", child, code);
-                return Ok(true);
+                return Ok((true, None));
             }
             WaitStatus::PtraceSyscall(p) => {
+                // ptrace(PTRACE_GETEVENTMSG,...) can be one of three values:
+                // 0 → PTRACE_SYSCALL_INFO_NONE
+                // 1 → PTRACE_SYSCALL_INFO_ENTRY
+                // 2 → PTRACE_SYSCALL_INFO_EXIT
+                let event = match getevent(p)? as u8 {
+                    0 => PtraceSyscallInfo::None,
+                    1 => PtraceSyscallInfo::Entry,
+                    2 => PtraceSyscallInfo::Exit,
+                    3 => PtraceSyscallInfo::Seccomp,
+                    _ => PtraceSyscallInfo::Unknown,
+                };
+
                 if p == Pid::from_raw(child) {
                     // debug!("{} syscall ptracesyscall status", child);
-                    return Ok(false);
+                    return Ok((false, Some(event)));
                 } else {
                     debug!("{} syscall ptracesyscall status for other pid", child);
-                    return Ok(false);
+                    return Ok((false, Some(event)));
                 }
             }
             WaitStatus::Stopped(pid, signal) => {
@@ -199,7 +222,7 @@ fn wait_for_syscall(child: i32) -> Result<bool> {
                 if signal == Signal::SIGCHLD {
                     debug!(?pid, "{} syscall stopped SIGCHLD", child);
                     // self.issue_ptrace_syscall_request(pid, Some(signal))?;
-                    return Ok(false);
+                    return Ok((false, None));
                 }
 
                 // If we fall through to here, we have another signal that's been sent to the tracee,
@@ -208,12 +231,12 @@ fn wait_for_syscall(child: i32) -> Result<bool> {
                 //  ptrace::cont(pid, signal)?;
 
                 debug!(?pid, "{} syscall stopped", child);
-                return Ok(false);
+                return Ok((false, None));
             }
             WaitStatus::PtraceEvent(_, _, code) => {
                 // We stop at the PTRACE_EVENT_EXIT event because of the PTRACE_O_TRACEEXIT option.
                 debug!(?code, "{} syscall ptrace event", child);
-                return Ok(false);
+                return Ok((false, None));
             }
             other => {
                 trace!("{} ignoring wait status {:?}", child, other);
@@ -258,7 +281,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
     };
 
     loop {
-        if wait_for_syscall(child)? {
+        let (exited, event) = wait_for_syscall(child)?;
+        if exited {
             break;
         }
         let registers =
@@ -316,7 +340,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
 
         // Wait for the syscall to complete
         let start = std::time::Instant::now();
-        if wait_for_syscall(child)? {
+        let (exited, event) = wait_for_syscall(child)?;
+        if exited {
             // Handle the fact that the child has exited before we know the return value
             // of the current syscall.
             if show_syscalls {
