@@ -287,23 +287,19 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
     };
 
     loop {
+        // Wait for a syscall to being or complete.
         let (exited, event) = wait_for_syscall(child)?;
         if exited {
+            if event.is_none() && options.show_syscalls() {
+                // Handle the fact that the child has exited before we know the return value
+                // of the current syscall.
+                writeln!(output, "?")?;
+            }
             break;
         }
-        let registers =
-            ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed errno {}", errno))?;
-        let syscall_num = registers.orig_rax;
 
-        let syscall_arg_registers = [
-            registers.rdi,
-            registers.rsi,
-            registers.rdx,
-            registers.r10,
-            registers.r8,
-            registers.r9,
-        ];
-
+        let start = std::time::Instant::now();
+        // TODO: it's a bit weird to recalc the timestamp on syscall exit and use it in CUDA output.
         let t: String = match options.t {
             TimestampOption::None => String::new(),
             TimestampOption::Absolute => {
@@ -323,45 +319,31 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             TimestampOption::AbsoluteUNIXUsecs => todo!(),
         };
 
-        if options.stats.summary != SummaryOption::None {
-            let stat = summary_stats.entry(syscall_num).or_default();
-            stat.calls += 1;
+        match event {
+            Some(PtraceSyscallInfo::None) => {}
+            Some(PtraceSyscallInfo::Entry) => record_syscall_entry(
+                child,
+                &options,
+                output,
+                &trace_start,
+                &mut tef,
+                &t,
+                &mut summary_stats,
+            )?,
+            Some(PtraceSyscallInfo::Exit) => record_syscall_exit(
+                child,
+                &start,
+                &options,
+                &mut summary_stats,
+                &mut tef,
+                output,
+                &trace_start,
+                &t,
+            )?,
+            Some(PtraceSyscallInfo::Seccomp) => warn!("unexpected seccomp syscall event"),
+            Some(PtraceSyscallInfo::Unknown) => warn!("unknown syscall event"),
+            None => {}
         }
-
-        record_syscall_entry(
-            child,
-            syscall_num,
-            &syscall_arg_registers,
-            &options,
-            output,
-            &trace_start,
-            &mut tef,
-            &t,
-        )?;
-
-        // Wait for the syscall to complete
-        let start = std::time::Instant::now();
-        let (exited, event) = wait_for_syscall(child)?;
-        if exited {
-            // Handle the fact that the child has exited before we know the return value
-            // of the current syscall.
-            if options.show_syscalls() {
-                writeln!(output, "?")?;
-            }
-            break;
-        }
-        record_syscall_exit(
-            child,
-            syscall_num,
-            &start,
-            &options,
-            &mut summary_stats,
-            &mut tef,
-            output,
-            &trace_start,
-            &syscall_arg_registers,
-            &t,
-        )?;
     }
 
     let trace_end = std::time::Instant::now();
@@ -381,15 +363,32 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
 #[allow(clippy::too_many_arguments)]
 fn record_syscall_entry(
     child: libc::pid_t,
-    syscall_num: u64,
-    syscall_arg_registers: &[u64],
     options: &TraceOptions,
     output: &mut dyn std::io::Write,
     trace_start: &std::time::Instant,
     tef: &mut Option<tef::TefWriter>,
     t: &str, // timestamp
+    summary_stats: &mut HashMap<u64, SyscallStat>,
 ) -> Result<()> {
     let show_syscalls = options.show_syscalls();
+    let registers =
+        ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed errno {}", errno))?;
+    let syscall_num = registers.orig_rax;
+
+    let syscall_arg_registers = [
+        registers.rdi,
+        registers.rsi,
+        registers.rdx,
+        registers.r10,
+        registers.r8,
+        registers.r9,
+    ];
+
+    if options.stats.summary != SummaryOption::None {
+        let stat = summary_stats.entry(syscall_num).or_default();
+        stat.calls += 1;
+    }
+
     if let Some((name, arg_fmts)) = SYSCALL_MAP.get(&syscall_num) {
         let mut args_str = String::new();
         let zipped = syscall_arg_registers
@@ -465,18 +464,28 @@ fn record_syscall_entry(
 #[allow(clippy::too_many_arguments)]
 fn record_syscall_exit(
     child: libc::pid_t,
-    syscall_num: u64,
     start: &std::time::Instant,
     options: &TraceOptions,
     summary_stats: &mut HashMap<u64, SyscallStat>,
     tef: &mut Option<tef::TefWriter>,
     output: &mut dyn std::io::Write,
     trace_start: &std::time::Instant,
-    syscall_arg_registers: &[u64],
-    t: &str, // timestamp
+    timestamp: &str, // timestamp
 ) -> Result<()> {
     let show_syscalls = options.show_syscalls();
     let show_cuda = show_syscalls || options.cuda_only;
+    let registers =
+        ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed: errno {}", errno))?;
+    let syscall_num = registers.orig_rax;
+
+    let syscall_arg_registers = [
+        registers.rdi,
+        registers.rsi,
+        registers.rdx,
+        registers.r10,
+        registers.r8,
+        registers.r9,
+    ];
 
     let name = SYSCALL_MAP
         .get(&syscall_num)
@@ -488,8 +497,6 @@ fn record_syscall_exit(
         stat.latency += duration;
     }
 
-    let registers =
-        ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed: errno {}", errno))?;
     let ret_code = RetCode::from_raw(registers.rax);
     if show_syscalls {
         match ret_code {
@@ -539,7 +546,7 @@ fn record_syscall_exit(
                 as *mut libc::c_void;
             if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp)? {
                 let ioctl = render_cuda(options.colored_output, ioctl);
-                writeln!(output, "  {}{}", t, ioctl)?;
+                writeln!(output, "  {}{}", timestamp, ioctl)?;
             }
         }
     }
