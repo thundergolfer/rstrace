@@ -19,6 +19,7 @@ use nix::{
     sys::{signal::Signal, wait::WaitStatus},
     unistd::Pid,
 };
+use ptrace::Options;
 use statistics::summary_to_table;
 use terminal::{
     render_cuda, render_syscall, render_syscall_return_addr, render_syscall_return_err,
@@ -93,6 +94,17 @@ pub struct TraceOptions {
     pub tef: bool,
 }
 
+fn ptrace_init_options() -> Options {
+    ptrace::Options::SysGood | ptrace::Options::TraceExit | ptrace::Options::TraceExec
+}
+
+fn ptrace_init_options_fork() -> Options {
+    ptrace_init_options()
+        | Options::TraceFork
+        | Options::TraceVFork
+        | Options::TraceClone
+}
+
 unsafe fn do_child<T, S>(args: T) -> Result<()>
 where
     T: IntoIterator<Item = S>,
@@ -151,16 +163,58 @@ fn wait_for_syscall(child: i32) -> Result<bool> {
                 debug!("{} signalled exited. exit code: {:?}", child, code);
                 return Ok(true);
             }
-            WaitStatus::PtraceSyscall(_) => {
-                debug!("{} syscall stopped", child);
+            WaitStatus::PtraceSyscall(p) => {
+                if p == Pid::from_raw(child) {
+                    // debug!("{} syscall ptracesyscall status", child);
+                    return Ok(false);
+                } else {
+                    debug!("{} syscall ptracesyscall status for other pid", child);
+                    return Ok(false);
+                }
+            }
+            WaitStatus::Stopped(pid, signal) => {
+                // There are three reasons why a child might stop with SIGTRAP:
+                // 1) syscall entry
+                // 2) syscall exit
+                // 3) child calls exec
+                //
+                // Because we are tracing with PTRACE_O_TRACESYSGOOD, syscall entry and syscall exit
+                // are stopped in PtraceSyscall and not here, which means if we get a SIGTRAP here,
+                // it's because the child called exec.
+                if signal == Signal::SIGTRAP {
+                    debug!(?pid, "{} syscall stopped SIGTRAP", child);
+                    return Ok(false);
+                }
+
+                // If we trace with PTRACE_O_TRACEFORK, PTRACE_O_TRACEVFORK, and PTRACE_O_TRACECLONE,
+                // a created child of our tracee will stop with SIGSTOP.
+                // If our tracee creates children of their own, we want to trace their syscall times with a new value.
+                if signal == Signal::SIGSTOP {
+                    debug!("Attaching to child {}", pid);
+                }
+
+                // The SIGCHLD signal is sent to a process when a child process terminates, interrupted, or resumes after being interrupted
+                // This means, that if our tracee forked and said fork exits before the parent, the parent will get stopped.
+                // Therefor issue a PTRACE_SYSCALL request to the parent to continue execution.
+                // This is also important if we trace without the following forks option.
+                if signal == Signal::SIGCHLD {
+                    debug!(?pid, "{} syscall stopped SIGCHLD", child);
+                    // self.issue_ptrace_syscall_request(pid, Some(signal))?;
+                    return Ok(false);
+                }
+
+                // If we fall through to here, we have another signal that's been sent to the tracee,
+                // in this case, just forward the singal to the tracee to let it handle it.
+                // TODO: Finer signal handling, edge-cases etc.
+                //  ptrace::cont(pid, signal)?;
+
+                debug!(?pid, "{} syscall stopped", child);
                 return Ok(false);
             }
-            WaitStatus::Stopped(_, signal) if signal != Signal::SIGTRAP => {
-                debug!("{} syscall stopped SIGTRAP", child);
+            WaitStatus::PtraceEvent(_, _, code) => {
+                // We stop at the PTRACE_EVENT_EXIT event because of the PTRACE_O_TRACEEXIT option.
+                debug!(?code, "{} syscall ptrace event", child);
                 return Ok(false);
-            }
-            WaitStatus::PtraceEvent(_, _, _) => {
-                debug!("{} ignoring syscall ptrace event", child);
             }
             other => {
                 trace!("{} ignoring wait status {:?}", child, other);
@@ -181,7 +235,16 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         bail!("child unexpected signal during trace setup: {:?}", status);
     }
 
-    if let Err(errno) = ptrace::setoptions(child, ptrace::Options::SysGood) {
+    let opts = if options.follow_forks {
+        // TODO(Jonathon): currently enabling this
+        // breaks the implementation because I've only ever been waiting on the
+        // child process, and not on any of its children.
+        ptrace_init_options_fork()
+    } else {
+        ptrace_init_options()
+    };
+
+    if let Err(errno) = ptrace::setoptions(child, opts) {
         bail!(
             "failed to ptrace child with PTRACE_O_TRACESYSGOOD. errno={}",
             errno

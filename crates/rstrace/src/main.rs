@@ -5,7 +5,6 @@
 //! ```bash
 //! rstrace -tt ls .
 //! ```
-//! TODO(Jonathon): Implement -f and -ff to follow forks
 use anyhow::Result;
 use rstrace::{trace_attach, trace_command};
 use tracing::level_filters::LevelFilter;
@@ -93,7 +92,7 @@ struct Cli {
     #[clap(
         short = 'f',
         long = "follow-forks",
-        help = "Follow forks",
+        help = "Trace child processes as they are created by currently traced processes as a result of the fork(2), vfork(2) and clone(2) system calls.",
         action = ArgAction::SetTrue,
         default_value_t = false
     )]
