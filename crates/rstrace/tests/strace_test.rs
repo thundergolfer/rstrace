@@ -83,6 +83,7 @@ fn test_follow_forks() -> Result<()> {
         stats: rstrace::StatisticsOptions {
             summary: rstrace::SummaryOption::SummaryOnly,
         },
+        follow_forks: true,
         ..Default::default()
     };
 
