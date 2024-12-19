@@ -302,79 +302,17 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             (options.stats.summary != SummaryOption::SummaryOnly) && !options.cuda_only;
         let show_cuda = show_syscalls || options.cuda_only;
 
-        let name = if let Some((name, arg_fmts)) = SYSCALL_MAP.get(&syscall_num) {
-            let mut args_str = String::new();
-            let zipped = syscall_arg_registers
-                .iter()
-                .zip(arg_fmts.iter())
-                .enumerate();
-            for (i, (register, fmt)) in zipped {
-                let fmtd_arg = match fmt {
-                    // TODO(Jonathon): escape tabs, newlines
-                    //
-                    // TODO(Jonathon): on syscall entry the pointer in a read syscall is not present
-                    // so the `dump` shows nothing. The dump should be populated
-                    // on exit of the syscall.
-                    FmtSpec::ReadBuffer => {
-                        let size = syscall_arg_registers
-                            .get(2)
-                            .expect("TODO: don't assume this is read syscall");
-                        let contents = dump(child, register, *size as usize, 36, true)
-                            .unwrap_or("READ FAILED".into());
-                        format!("\"{}\"", contents)
-                    }
-                    FmtSpec::FD => {
-                        if i == 0 && syscall_num == OPENAT_N && *register as i32 == AT_FDCWD {
-                            "AT_FDCWD".to_string()
-                        } else {
-                            // TODO: resolve to path
-                            format!("{}", register)
-                        }
-                    }
-                    FmtSpec::Hex => {
-                        format!("{:#x}", register)
-                    }
-                    // TODO(Jonathon): escape tabs, newlines
-                    FmtSpec::WriteBuffer => {
-                        let size = syscall_arg_registers
-                            .get(2)
-                            .expect("TODO: don't assume this is write syscall");
-                        let contents = dump(child, register, *size as usize, 36, true)
-                            .unwrap_or("DUMP FAILED".into());
-                        format!("\"{}\"", contents)
-                    }
-                    FmtSpec::Path => {
-                        // TODO: this doesn't handle paths longer than 1024 bytes
-                        let s =
-                            read_path_from_child(child, register).unwrap_or("READ FAILED".into());
-                        format!("\"{}\"", s)
-                    }
-                    _ => format!("{:#x}", register),
-                };
-                args_str.push_str(fmtd_arg.as_str());
-                if (i + 1) < arg_fmts.len() {
-                    args_str.push_str(", ");
-                }
-            }
-            if show_syscalls {
-                if let Some(ref mut tef) = tef {
-                    let e = tef.emit_duration_start(name, trace_start.elapsed().as_micros() as u64);
-                    write!(output, "{}", e)?;
-                } else {
-                    let name = render_syscall(options.colored_output, name, syscall_num);
-                    write!(output, "{}{}({}) = ", t, name, args_str)?;
-                }
-            }
-
-            name
-        } else {
-            warn!("unknown syscall number {}", syscall_num);
-            // "Syscalls unknown to strace are printed raw, with the unknown system call number printed in hexadecimal form and prefixed with "syscall_":"
-            if show_syscalls {
-                write!(output, "{}syscall_{:#x} = ", t, syscall_num)?;
-            }
-            "unknown"
-        };
+        record_syscall_entry(
+            child,
+            syscall_num,
+            &syscall_arg_registers,
+            &options,
+            output,
+            show_syscalls,
+            &trace_start,
+            &mut tef,
+            &t,
+        )?;
 
         // Wait for the syscall to complete
         let start = std::time::Instant::now();
@@ -388,7 +326,6 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         }
         record_syscall_exit(
             child,
-            name,
             syscall_num,
             &start,
             &options,
@@ -418,9 +355,92 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
 }
 
 #[allow(clippy::too_many_arguments)]
+fn record_syscall_entry(
+    child: libc::pid_t,
+    syscall_num: u64,
+    syscall_arg_registers: &[u64],
+    options: &TraceOptions,
+    output: &mut dyn std::io::Write,
+    show_syscalls: bool,
+    trace_start: &std::time::Instant,
+    tef: &mut Option<tef::TefWriter>,
+    t: &str, // timestamp
+) -> Result<()> {
+    if let Some((name, arg_fmts)) = SYSCALL_MAP.get(&syscall_num) {
+        let mut args_str = String::new();
+        let zipped = syscall_arg_registers
+            .iter()
+            .zip(arg_fmts.iter())
+            .enumerate();
+        for (i, (register, fmt)) in zipped {
+            let fmtd_arg = match fmt {
+                // TODO(Jonathon): escape tabs, newlines
+                //
+                // TODO(Jonathon): on syscall entry the pointer in a read syscall is not present
+                // so the `dump` shows nothing. The dump should be populated
+                // on exit of the syscall.
+                FmtSpec::ReadBuffer => {
+                    let size = syscall_arg_registers
+                        .get(2)
+                        .expect("TODO: don't assume this is read syscall");
+                    let contents = dump(child, register, *size as usize, 36, true)
+                        .unwrap_or("READ FAILED".into());
+                    format!("\"{}\"", contents)
+                }
+                FmtSpec::FD => {
+                    if i == 0 && syscall_num == OPENAT_N && *register as i32 == AT_FDCWD {
+                        "AT_FDCWD".to_string()
+                    } else {
+                        // TODO: resolve to path
+                        format!("{}", register)
+                    }
+                }
+                FmtSpec::Hex => {
+                    format!("{:#x}", register)
+                }
+                // TODO(Jonathon): escape tabs, newlines
+                FmtSpec::WriteBuffer => {
+                    let size = syscall_arg_registers
+                        .get(2)
+                        .expect("TODO: don't assume this is write syscall");
+                    let contents = dump(child, register, *size as usize, 36, true)
+                        .unwrap_or("DUMP FAILED".into());
+                    format!("\"{}\"", contents)
+                }
+                FmtSpec::Path => {
+                    // TODO: this doesn't handle paths longer than 1024 bytes
+                    let s = read_path_from_child(child, register).unwrap_or("READ FAILED".into());
+                    format!("\"{}\"", s)
+                }
+                _ => format!("{:#x}", register),
+            };
+            args_str.push_str(fmtd_arg.as_str());
+            if (i + 1) < arg_fmts.len() {
+                args_str.push_str(", ");
+            }
+        }
+        if show_syscalls {
+            if let Some(ref mut tef) = tef {
+                let e = tef.emit_duration_start(name, trace_start.elapsed().as_micros() as u64);
+                write!(output, "{}", e)?;
+            } else {
+                let name = render_syscall(options.colored_output, name, syscall_num);
+                write!(output, "{}{}({}) = ", t, name, args_str)?;
+            }
+        }
+    } else {
+        warn!("unknown syscall number {}", syscall_num);
+        // "Syscalls unknown to strace are printed raw, with the unknown system call number printed in hexadecimal form and prefixed with "syscall_":"
+        if show_syscalls {
+            write!(output, "{}syscall_{:#x} = ", t, syscall_num)?;
+        }
+    };
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 fn record_syscall_exit(
     child: libc::pid_t,
-    name: &str,
     syscall_num: u64,
     start: &std::time::Instant,
     options: &TraceOptions,
@@ -433,6 +453,10 @@ fn record_syscall_exit(
     syscall_arg_registers: &[u64],
     t: &str, // timestamp
 ) -> Result<()> {
+    let name = SYSCALL_MAP
+        .get(&syscall_num)
+        .map(|(name, _)| name)
+        .map_or("unknown", |v| v);
     let duration = start.elapsed();
     if options.stats.summary != SummaryOption::None {
         let stat = summary_stats.entry(syscall_num).or_default();
