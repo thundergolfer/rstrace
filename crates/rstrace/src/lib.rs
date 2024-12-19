@@ -95,7 +95,9 @@ pub struct TraceOptions {
 }
 
 fn ptrace_init_options() -> Options {
-    ptrace::Options::SysGood | ptrace::Options::TraceExit | ptrace::Options::TraceExec
+    // TODO(Jonathon): add exit and exec: ptrace::Options::TraceExit | ptrace::Options::TraceExec
+    // Currently these options break things, make -38 errors show up on all syscalls.
+    ptrace::Options::SysGood
 }
 
 fn ptrace_init_options_fork() -> Options {
@@ -180,7 +182,7 @@ fn wait_for_syscall(child: i32) -> Result<bool> {
                 // it's because the child called exec.
                 if signal == Signal::SIGTRAP {
                     debug!(?pid, "{} syscall stopped SIGTRAP", child);
-                    return Ok(false);
+                    continue;
                 }
 
                 // If we trace with PTRACE_O_TRACEFORK, PTRACE_O_TRACEVFORK, and PTRACE_O_TRACECLONE,
