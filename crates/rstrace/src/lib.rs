@@ -12,7 +12,7 @@ use std::ptr;
 use std::{collections::HashMap, ffi::CString};
 
 use anyhow::{anyhow, bail, Result};
-use info::{RetCode, IOCTL_N, OPENAT_N};
+use info::{RetCode, EXIT_GROUP_N, EXIT_N, IOCTL_N, OPENAT_N};
 use libc::{self, AT_FDCWD};
 use nix::errno::Errno;
 use nix::sys::ptrace::getevent;
@@ -26,7 +26,7 @@ use terminal::{
     render_cuda, render_syscall, render_syscall_return_addr, render_syscall_return_err,
     render_syscall_return_success,
 };
-use tracing::{debug, trace, warn};
+use tracing::{debug, warn};
 
 use crate::{
     info::{FmtSpec, SYSCALL_MAP},
@@ -67,9 +67,8 @@ fn make_ts(t_opt: &TimestampOption) -> Result<String> {
             format!("{} ", now.format(&format).unwrap())
         }
         TimestampOption::AbsoluteUsecs => {
-            let format = time::format_description::parse(
-                "[hour]:[minute]:[second].[subsecond digits:6]",
-            )?;
+            let format =
+                time::format_description::parse("[hour]:[minute]:[second].[subsecond digits:6]")?;
             let now = time::OffsetDateTime::now_local()
                 .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
             format!("{} ", now.format(&format).unwrap())
@@ -125,9 +124,7 @@ impl TraceOptions {
 }
 
 fn ptrace_init_options() -> Options {
-    // TODO(Jonathon): add exit and exec: ptrace::Options::TraceExit | ptrace::Options::TraceExec
-    // Currently these options break things, make -38 errors show up on all syscalls.
-    ptrace::Options::SysGood
+    ptrace::Options::SysGood | ptrace::Options::TraceExit | ptrace::Options::TraceExec
 }
 
 fn ptrace_init_options_fork() -> Options {
@@ -188,90 +185,6 @@ enum PtraceSyscallInfo {
     Unknown = 4,
 }
 
-// Run the child until either entry to or exit from a system call.
-// If it returns false, the child has exited.
-fn wait_for_syscall(child: i32) -> Result<(bool, Option<PtraceSyscallInfo>)> {
-    loop {
-        _ = ptrace::syscall(child)
-            .map_err(|errno| anyhow!("SINGLESTEP failed. errno {}", errno))?;
-        let status = nix::sys::wait::waitpid(Pid::from_raw(child), None)
-            .map_err(|errno| anyhow!("waitpid had error. errno {}", errno))?;
-        match status {
-            WaitStatus::Exited(_, code) => {
-                debug!("{} signalled exited. exit code: {:?}", child, code);
-                return Ok((true, None));
-            }
-            WaitStatus::PtraceSyscall(p) => {
-                // ptrace(PTRACE_GETEVENTMSG,...) can be one of three values:
-                // 0 → PTRACE_SYSCALL_INFO_NONE
-                // 1 → PTRACE_SYSCALL_INFO_ENTRY
-                // 2 → PTRACE_SYSCALL_INFO_EXIT
-                let event = match getevent(p)? as u8 {
-                    0 => PtraceSyscallInfo::None,
-                    1 => PtraceSyscallInfo::Entry,
-                    2 => PtraceSyscallInfo::Exit,
-                    3 => PtraceSyscallInfo::Seccomp,
-                    _ => PtraceSyscallInfo::Unknown,
-                };
-
-                if p == Pid::from_raw(child) {
-                    return Ok((false, Some(event)));
-                } else {
-                    debug!("{} syscall ptracesyscall status for other pid", child);
-                    return Ok((false, Some(event)));
-                }
-            }
-            WaitStatus::Stopped(pid, signal) => {
-                // There are three reasons why a child might stop with SIGTRAP:
-                // 1) syscall entry
-                // 2) syscall exit
-                // 3) child calls exec
-                //
-                // Because we are tracing with PTRACE_O_TRACESYSGOOD, syscall entry and syscall exit
-                // are stopped in PtraceSyscall and not here, which means if we get a SIGTRAP here,
-                // it's because the child called exec.
-                if signal == Signal::SIGTRAP {
-                    debug!(?pid, "{} syscall stopped SIGTRAP", child);
-                    continue;
-                }
-
-                // If we trace with PTRACE_O_TRACEFORK, PTRACE_O_TRACEVFORK, and PTRACE_O_TRACECLONE,
-                // a created child of our tracee will stop with SIGSTOP.
-                // If our tracee creates children of their own, we want to trace their syscall times with a new value.
-                if signal == Signal::SIGSTOP {
-                    debug!("Attaching to child {}", pid);
-                }
-
-                // The SIGCHLD signal is sent to a process when a child process terminates, interrupted, or resumes after being interrupted
-                // This means, that if our tracee forked and said fork exits before the parent, the parent will get stopped.
-                // Therefor issue a PTRACE_SYSCALL request to the parent to continue execution.
-                // This is also important if we trace without the following forks option.
-                if signal == Signal::SIGCHLD {
-                    debug!(?pid, "{} syscall stopped SIGCHLD", child);
-                    // self.issue_ptrace_syscall_request(pid, Some(signal))?;
-                    return Ok((false, None));
-                }
-
-                // If we fall through to here, we have another signal that's been sent to the tracee,
-                // in this case, just forward the singal to the tracee to let it handle it.
-                // TODO: Finer signal handling, edge-cases etc.
-                //  ptrace::cont(pid, signal)?;
-
-                debug!(?pid, "{} syscall stopped", child);
-                return Ok((false, None));
-            }
-            WaitStatus::PtraceEvent(_, _, code) => {
-                // We stop at the PTRACE_EVENT_EXIT event because of the PTRACE_O_TRACEEXIT option.
-                debug!(?code, "{} syscall ptrace event", child);
-                return Ok((false, None));
-            }
-            other => {
-                trace!("{} ignoring wait status {:?}", child, other);
-            }
-        }
-    }
-}
-
 fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) -> Result<()> {
     debug!(%child, "starting trace of child");
     let trace_start = std::time::Instant::now();
@@ -284,6 +197,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         bail!("child unexpected signal during trace setup: {:?}", status);
     }
 
+    // Now that we've waited for the tracee to be ready, set the ptrace options.
+    debug!(?child, "set options");
     let opts = if options.follow_forks {
         // TODO(Jonathon): currently enabling this
         // breaks the implementation because I've only ever been waiting on the
@@ -300,6 +215,10 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         );
     }
 
+    // After setting options, single step the child to resume execution.
+    debug!(?child, "single step to resume tracee");
+    nix::sys::ptrace::syscall(Pid::from_raw(child), None)?;
+
     let mut summary_stats: HashMap<u64, SyscallStat> = HashMap::new();
     let mut tef = if options.tef {
         Some(tef::TefWriter::new())
@@ -307,46 +226,172 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         None
     };
 
+    // The main tracer loop runs here. It is an outer loop that processes all syscall
+    // events until the root child (tracee) exits, and an inner loop (wait_for_syscall)
+    // that processes statuses and signals for all children until a syscall event is found.
+    debug!("begin trace loop");
     loop {
-        // Wait for a syscall to being or complete.
-        let (exited, event) = wait_for_syscall(child)?;
-        if exited {
-            if event.is_none() && options.show_syscalls() {
-                // Handle the fact that the child has exited before we know the return value
-                // of the current syscall.
-                writeln!(output, "?")?;
+        let status = nix::sys::wait::waitpid(Pid::from_raw(child), None)
+            .map_err(|errno| anyhow!("waitpid had error. errno {}", errno))?;
+        // Wait for a syscall to begin or complete.
+        match status {
+            // `WIFSTOPPED(status), signal is WSTOPSIG(status)
+            WaitStatus::Stopped(pid, signal) => {
+                // There are three reasons why a child might stop with SIGTRAP:
+                // 1) syscall entry
+                // 2) syscall exit
+                // 3) child calls exec
+                //
+                // Because we are tracing with PTRACE_O_TRACESYSGOOD, syscall entry and syscall exit
+                // are stopped in PtraceSyscall and not here, which means if we get a SIGTRAP here,
+                // it's because the child called exec.
+                if signal == Signal::SIGTRAP {
+                    record_syscall_entry(
+                        pid.into(),
+                        &options,
+                        output,
+                        &trace_start,
+                        &mut tef,
+                        &mut summary_stats,
+                    )?;
+                    nix::sys::ptrace::syscall(pid, None)?;
+                    continue;
+                }
+
+                // If we trace with PTRACE_O_TRACEFORK, PTRACE_O_TRACEVFORK, and PTRACE_O_TRACECLONE,
+                // a created child of our tracee will stop with SIGSTOP.
+                // If our tracee creates children of their own, we want to trace their syscall times with a new value.
+                if signal == Signal::SIGSTOP {
+                    if options.follow_forks {
+                        // start_times.insert(pid, None);
+                        if options.show_syscalls() {
+                            writeln!(output, "Attaching to child {}", pid,)?;
+                        }
+                    }
+
+                    nix::sys::ptrace::syscall(pid, None)?;
+                    continue;
+                }
+
+                // The SIGCHLD signal is sent to a process when a child process terminates, interrupted, or resumes after being interrupted
+                // This means, that if our tracee forked and said fork exits before the parent, the parent will get stopped.
+                // Therefor issue a PTRACE_SYSCALL request to the parent to continue execution.
+                // This is also important if we trace without the following forks option.
+                if signal == Signal::SIGCHLD {
+                    nix::sys::ptrace::syscall(pid, Some(signal))?;
+                    continue;
+                }
+
+                // If we fall through to here, we have another signal that's been sent to the tracee,
+                // in this case, just forward the singal to the tracee to let it handle it.
+                // TODO: Finer signal handling, edge-cases etc.
+                nix::sys::ptrace::cont(pid, signal)?;
             }
-            break;
-        }
+            // WIFEXITED(status)
+            WaitStatus::Exited(pid, _) => {
+                // If the process that exits is the original tracee, we can safely break here,
+                // but we need to continue if the process that exits is a child of the original tracee.
+                if Pid::from_raw(child) == pid {
+                    if options.show_syscalls() {
+                        // Handle the fact that the child has exited before we know the return value
+                        // of the current syscall.
+                        writeln!(output, "?")?;
+                    }
+                    break;
+                } else {
+                    continue;
+                };
+            }
+            // The traced process was stopped by a `PTRACE_EVENT_*` event.
+            WaitStatus::PtraceEvent(pid, _, code) => {
+                fn is_exit_syscall(pid: &Pid) -> Result<bool> {
+                    let registers = ptrace::getregs(pid.as_raw())
+                        .map_err(|errno| anyhow!("ptrace failed errno {}", errno))?;
+                    let reg = registers.orig_rax;
+                    Ok(reg == EXIT_N as u64 || reg == EXIT_GROUP_N as u64)
+                }
 
-        let start = std::time::Instant::now();
-        // TODO: it's a bit weird to recalc the timestamp on syscall exit and use it in CUDA output.
-        let t: String = make_ts(&options.t)?;
+                // We stop at the PTRACE_EVENT_EXIT event because of the PTRACE_O_TRACEEXIT option.
+                // We do this to properly catch and log exit-family syscalls, which do not have an PTRACE_SYSCALL_INFO_EXIT event.
+                if code == PtraceSyscallInfo::Exit as i32 && is_exit_syscall(&pid)? {
+                    let start = std::time::Instant::now();
+                    let t: String = make_ts(&options.t)?;
+                    record_syscall_exit(
+                        pid.into(),
+                        &start,
+                        &options,
+                        &mut summary_stats,
+                        &mut tef,
+                        output,
+                        &trace_start,
+                        &t,
+                    )?;
+                }
 
-        match event {
-            Some(PtraceSyscallInfo::None) => {}
-            Some(PtraceSyscallInfo::Entry) => record_syscall_entry(
-                child,
-                &options,
-                output,
-                &trace_start,
-                &mut tef,
-                &t,
-                &mut summary_stats,
-            )?,
-            Some(PtraceSyscallInfo::Exit) => record_syscall_exit(
-                child,
-                &start,
-                &options,
-                &mut summary_stats,
-                &mut tef,
-                output,
-                &trace_start,
-                &t,
-            )?,
-            Some(PtraceSyscallInfo::Seccomp) => warn!("unexpected seccomp syscall event"),
-            Some(PtraceSyscallInfo::Unknown) => warn!("unknown syscall event"),
-            None => {}
+                nix::sys::ptrace::syscall(pid, None)?;
+            }
+            // Tracee is traced with the PTRACE_O_TRACESYSGOOD option.
+            WaitStatus::PtraceSyscall(pid) => {
+                // ptrace(PTRACE_GETEVENTMSG,...) can be one of three values here:
+                // 1) PTRACE_SYSCALL_INFO_NONE
+                // 2) PTRACE_SYSCALL_INFO_ENTRY
+                // 3) PTRACE_SYSCALL_INFO_EXIT
+                let event = match getevent(pid)? as u8 {
+                    0 => PtraceSyscallInfo::None,
+                    1 => PtraceSyscallInfo::Entry,
+                    2 => PtraceSyscallInfo::Exit,
+                    3 => PtraceSyscallInfo::Seccomp,
+                    _ => PtraceSyscallInfo::Unknown,
+                };
+
+                // Snapshot current time, to avoid polluting the syscall time with
+                // non-syscall related latency.
+                let start = std::time::Instant::now();
+                // TODO: it's a bit weird to recalc the timestamp on syscall exit and use it in CUDA output.
+                let t: String = make_ts(&options.t)?;
+
+                match event {
+                    PtraceSyscallInfo::Entry => record_syscall_entry(
+                        pid.into(),
+                        &options,
+                        output,
+                        &trace_start,
+                        &mut tef,
+                        &mut summary_stats,
+                    )?,
+                    PtraceSyscallInfo::Exit => record_syscall_exit(
+                        pid.into(),
+                        &start,
+                        &options,
+                        &mut summary_stats,
+                        &mut tef,
+                        output,
+                        &trace_start,
+                        &t,
+                    )?,
+                    PtraceSyscallInfo::Seccomp => warn!("unexpected seccomp syscall event"),
+                    PtraceSyscallInfo::Unknown => warn!("unknown syscall event"),
+                    PtraceSyscallInfo::None => {}
+                }
+
+                nix::sys::ptrace::syscall(pid, None)?;
+            }
+            // WIFSIGNALED(status), signal is WTERMSIG(status) and coredump is WCOREDUMP(status)
+            WaitStatus::Signaled(pid, signal, coredump) => {
+                writeln!(
+                    output,
+                    "Child {} terminated by signal {:?} {}",
+                    pid,
+                    signal,
+                    if coredump { "(core dumped)" } else { "" }
+                )?;
+                break;
+            }
+            // WIFCONTINUED(status), this usually happens when a process receives a SIGCONT.
+            // Just continue with the next iteration of the loop.
+            WaitStatus::Continued(_) | WaitStatus::StillAlive => {
+                continue;
+            }
         }
     }
 
@@ -371,9 +416,9 @@ fn record_syscall_entry(
     output: &mut dyn std::io::Write,
     trace_start: &std::time::Instant,
     tef: &mut Option<tef::TefWriter>,
-    t: &str, // timestamp
     summary_stats: &mut HashMap<u64, SyscallStat>,
 ) -> Result<()> {
+    let t: String = make_ts(&options.t)?;
     let show_syscalls = options.show_syscalls();
     let registers =
         ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed errno {}", errno))?;
