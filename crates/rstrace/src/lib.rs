@@ -123,11 +123,24 @@ impl TraceOptions {
     }
 }
 
+// Base options for tracing.
+//
+// PTRACE_O_TRACESYSGOOD is essential, being the recommended option for detecting
+// syscall-related stops of the traced child.
+//
+// PTRACE_O_TRACEEXIT allows for detecting exit-family syscalls, and outputting better
+// info than WaitStatus::Exited allows.
+//
+// PTRACE_O_TRACEEXEC is used to handle the "execve(2) under ptrace" problem.
+//
+// https://man7.org/linux/man-pages/man2/ptrace.2.html.
 fn ptrace_init_options() -> Options {
     ptrace::Options::SysGood | ptrace::Options::TraceExit | ptrace::Options::TraceExec
 }
 
-fn ptrace_init_options_fork() -> Options {
+// To enable --follow-forks functionality we need to add to the base options in `ptrace_init_options`.
+// https://man7.org/linux/man-pages/man2/ptrace.2.html.
+fn ptrace_init_options_with_follow_forks() -> Options {
     ptrace_init_options() | Options::TraceFork | Options::TraceVFork | Options::TraceClone
 }
 
@@ -176,13 +189,13 @@ where
     bail!("errno = {} ({})", errno, error_name)
 }
 
+// Defined in <linux/ptrace.h>, indicating what type of stop occurred.
 #[derive(Debug)]
 enum PtraceSyscallInfo {
     None = 0,
     Entry = 1,
     Exit = 2,
     Seccomp = 3,
-    Unknown = 4,
 }
 
 fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) -> Result<()> {
@@ -203,7 +216,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         // TODO(Jonathon): currently enabling this
         // breaks the implementation because I've only ever been waiting on the
         // child process, and not on any of its children.
-        ptrace_init_options_fork()
+        ptrace_init_options_with_follow_forks()
     } else {
         ptrace_init_options()
     };
@@ -332,16 +345,13 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             }
             // Tracee is traced with the PTRACE_O_TRACESYSGOOD option.
             WaitStatus::PtraceSyscall(pid) => {
-                // ptrace(PTRACE_GETEVENTMSG,...) can be one of three values here:
-                // 1) PTRACE_SYSCALL_INFO_NONE
-                // 2) PTRACE_SYSCALL_INFO_ENTRY
-                // 3) PTRACE_SYSCALL_INFO_EXIT
+                // ptrace(PTRACE_GETEVENTMSG,...) can be one of four values here:
                 let event = match getevent(pid)? as u8 {
                     0 => PtraceSyscallInfo::None,
                     1 => PtraceSyscallInfo::Entry,
                     2 => PtraceSyscallInfo::Exit,
                     3 => PtraceSyscallInfo::Seccomp,
-                    _ => PtraceSyscallInfo::Unknown,
+                    _ => bail!("unknown syscall event"),
                 };
 
                 // Snapshot current time, to avoid polluting the syscall time with
@@ -370,7 +380,6 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         &t,
                     )?,
                     PtraceSyscallInfo::Seccomp => warn!("unexpected seccomp syscall event"),
-                    PtraceSyscallInfo::Unknown => warn!("unknown syscall event"),
                     PtraceSyscallInfo::None => {}
                 }
 
