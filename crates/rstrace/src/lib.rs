@@ -57,6 +57,28 @@ pub enum TimestampOption {
     AbsoluteUNIXUsecs,
 }
 
+fn make_ts(t_opt: &TimestampOption) -> Result<String> {
+    let t = match t_opt {
+        TimestampOption::None => String::new(),
+        TimestampOption::Absolute => {
+            let format = time::format_description::parse("[hour]:[minute]:[second]")?;
+            let now = time::OffsetDateTime::now_local()
+                .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+            format!("{} ", now.format(&format).unwrap())
+        }
+        TimestampOption::AbsoluteUsecs => {
+            let format = time::format_description::parse(
+                "[hour]:[minute]:[second].[subsecond digits:6]",
+            )?;
+            let now = time::OffsetDateTime::now_local()
+                .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+            format!("{} ", now.format(&format).unwrap())
+        }
+        TimestampOption::AbsoluteUNIXUsecs => todo!(),
+    };
+    Ok(t)
+}
+
 #[allow(missing_docs)]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum SummaryOption {
@@ -193,7 +215,6 @@ fn wait_for_syscall(child: i32) -> Result<(bool, Option<PtraceSyscallInfo>)> {
                 };
 
                 if p == Pid::from_raw(child) {
-                    // debug!("{} syscall ptracesyscall status", child);
                     return Ok((false, Some(event)));
                 } else {
                     debug!("{} syscall ptracesyscall status for other pid", child);
@@ -300,24 +321,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
 
         let start = std::time::Instant::now();
         // TODO: it's a bit weird to recalc the timestamp on syscall exit and use it in CUDA output.
-        let t: String = match options.t {
-            TimestampOption::None => String::new(),
-            TimestampOption::Absolute => {
-                let format = time::format_description::parse("[hour]:[minute]:[second]")?;
-                let now = time::OffsetDateTime::now_local()
-                    .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
-                format!("{} ", now.format(&format).unwrap())
-            }
-            TimestampOption::AbsoluteUsecs => {
-                let format = time::format_description::parse(
-                    "[hour]:[minute]:[second].[subsecond digits:6]",
-                )?;
-                let now = time::OffsetDateTime::now_local()
-                    .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
-                format!("{} ", now.format(&format).unwrap())
-            }
-            TimestampOption::AbsoluteUNIXUsecs => todo!(),
-        };
+        let t: String = make_ts(&options.t)?;
 
         match event {
             Some(PtraceSyscallInfo::None) => {}
