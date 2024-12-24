@@ -13,7 +13,7 @@ categories = ["development-tools"]
 [dependencies]
 anyhow = "1.0.86"
 bitflags = "2.5.0"
-clap = { version = "4.5.18", features = ["derive"] }
+clap = { version = "4.5.18", features = ["derive", "env"] }
 lazy_static = "1.4.0"
 libc = "0.2.139"
 nix = { version = "0.28.0", features = ["process", "ptrace"] }

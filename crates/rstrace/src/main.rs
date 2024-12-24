@@ -102,9 +102,24 @@ struct Cli {
         long = "color",
         help = "Enable colored output",
         action = ArgAction::SetTrue,
-        default_value_t = false
+        default_value_t = false,
+        value_parser = clap::builder::FalseyValueParser::new(),
+        env = "FORCE_COLOR"
     )]
     color: bool,
+
+    // Attempt to follow https://no-color.org/.
+    // Note however that we don't accept *any* non-empty string.
+    #[clap(
+        long = "no-color",
+        help = None,
+        action = ArgAction::SetTrue,
+        default_value_t = false,
+        value_parser = clap::builder::FalseyValueParser::new(),
+        env = "NO_COLOR",
+        hide = true, // Not useful for this option to show up in --help.
+    )]
+    no_color: bool,
 }
 
 fn main() -> Result<()> {
@@ -146,12 +161,21 @@ fn main() -> Result<()> {
         anyhow::bail!("--cuda-only and --summary cannot be used together");
     }
 
+    // Adhere to recommendations in https://clig.dev/#output for colored output configuration.
+    let app_specific_no_color = match std::env::var("RSTRACE_NO_COLOR") {
+        Ok(s) if !s.is_empty() => true,
+        _ => false,
+    };
+    let color = cli.color;
+    let no_color = cli.no_color || app_specific_no_color;
+    let colored_output = if no_color { false } else { color };
+
     let options = rstrace::TraceOptions {
         t,
         stats: rstrace::StatisticsOptions { summary: s },
         cuda_sniff: cli.cuda_sniff,
         cuda_only: cli.cuda_only,
-        colored_output: cli.color,
+        colored_output: colored_output,
         follow_forks: cli.follow_forks,
         tef: cli.tef,
         ..Default::default()
