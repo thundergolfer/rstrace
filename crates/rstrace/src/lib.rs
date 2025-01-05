@@ -244,10 +244,66 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
     // that processes statuses and signals for all children until a syscall event is found.
     debug!("begin trace loop");
     loop {
+        // Here we wait on any signal from the child process.
+        // We are predominantly interested in the SIGTRAP signal, and more specifically a
+        // SIGTRAP which occurred *because of a syscall was performed in the traced child.*
+        //
+        // The PTRACE_O_TRACESYSGOOD option allows us to differentiate a traced syscall-specific SIGTRAP
+        // from other SIGTRAPs, which are sent for other reasons (noted below).
         let status = nix::sys::wait::waitpid(Pid::from_raw(child), None)
             .map_err(|errno| anyhow!("waitpid had error. errno {}", errno))?;
-        // Wait for a syscall to begin or complete.
+
+        // We got a status, so what happened to the child?
         match status {
+            // Answer: Tracee is traced with the PTRACE_O_TRACESYSGOOD option and sent a syscall-specific SIGTRAP.
+            //
+            // The child has invoked a syscall and caused a mode switch into the kernel. The kernel has recognized
+            // that the child is traced and that the tracer enabled PTRACE_O_TRACESYSGOOD to identify the syscall event.
+            // The child is now stopped and the tracer can record the syscall entry and exit, and then the tracer
+            // is responsible for resuming the child.
+            WaitStatus::PtraceSyscall(pid) => {
+                // ptrace(PTRACE_GETEVENTMSG,...) can be one of four values here:
+                let event = match getevent(pid)? as u8 {
+                    0 => PtraceSyscallInfo::None,
+                    1 => PtraceSyscallInfo::Entry,
+                    2 => PtraceSyscallInfo::Exit,
+                    3 => PtraceSyscallInfo::Seccomp,
+                    _ => bail!("unknown syscall event"),
+                };
+
+                // Snapshot current time, to avoid polluting the syscall time with
+                // non-syscall related latency.
+                let start = std::time::Instant::now();
+                // TODO: it's a bit weird to recalc the timestamp on syscall exit and use it in CUDA output.
+                let t: String = make_ts(&options.t)?;
+
+                match event {
+                    PtraceSyscallInfo::Entry => record_syscall_entry(
+                        pid.into(),
+                        &options,
+                        output,
+                        &trace_start,
+                        &mut tef,
+                        &mut summary_stats,
+                    )?,
+                    PtraceSyscallInfo::Exit => record_syscall_exit(
+                        pid.into(),
+                        &start,
+                        &options,
+                        &mut summary_stats,
+                        &mut tef,
+                        output,
+                        &trace_start,
+                        &t,
+                    )?,
+                    PtraceSyscallInfo::Seccomp => warn!("unexpected seccomp syscall event"),
+                    PtraceSyscallInfo::None => {}
+                }
+
+                nix::sys::ptrace::syscall(pid, None)?; // resume the child.
+            }
+            // Answer: the child stopped but not because of a syscall event (which would have been handled above).
+            //
             // `WIFSTOPPED(status), signal is WSTOPSIG(status)
             WaitStatus::Stopped(pid, signal) => {
                 // There are three reasons why a child might stop with SIGTRAP:
@@ -300,6 +356,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                 // TODO: Finer signal handling, edge-cases etc.
                 nix::sys::ptrace::cont(pid, signal)?;
             }
+            // Answer: the child exited.
+            //
             // WIFEXITED(status)
             WaitStatus::Exited(pid, _) => {
                 // If the process that exits is the original tracee, we can safely break here,
@@ -343,48 +401,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
 
                 nix::sys::ptrace::syscall(pid, None)?;
             }
-            // Tracee is traced with the PTRACE_O_TRACESYSGOOD option.
-            WaitStatus::PtraceSyscall(pid) => {
-                // ptrace(PTRACE_GETEVENTMSG,...) can be one of four values here:
-                let event = match getevent(pid)? as u8 {
-                    0 => PtraceSyscallInfo::None,
-                    1 => PtraceSyscallInfo::Entry,
-                    2 => PtraceSyscallInfo::Exit,
-                    3 => PtraceSyscallInfo::Seccomp,
-                    _ => bail!("unknown syscall event"),
-                };
-
-                // Snapshot current time, to avoid polluting the syscall time with
-                // non-syscall related latency.
-                let start = std::time::Instant::now();
-                // TODO: it's a bit weird to recalc the timestamp on syscall exit and use it in CUDA output.
-                let t: String = make_ts(&options.t)?;
-
-                match event {
-                    PtraceSyscallInfo::Entry => record_syscall_entry(
-                        pid.into(),
-                        &options,
-                        output,
-                        &trace_start,
-                        &mut tef,
-                        &mut summary_stats,
-                    )?,
-                    PtraceSyscallInfo::Exit => record_syscall_exit(
-                        pid.into(),
-                        &start,
-                        &options,
-                        &mut summary_stats,
-                        &mut tef,
-                        output,
-                        &trace_start,
-                        &t,
-                    )?,
-                    PtraceSyscallInfo::Seccomp => warn!("unexpected seccomp syscall event"),
-                    PtraceSyscallInfo::None => {}
-                }
-
-                nix::sys::ptrace::syscall(pid, None)?;
-            }
+            // Answer: the child was terminated by a signal, and, uh oh, may have crashed.
+            //
             // WIFSIGNALED(status), signal is WTERMSIG(status) and coredump is WCOREDUMP(status)
             WaitStatus::Signaled(pid, signal, coredump) => {
                 writeln!(
