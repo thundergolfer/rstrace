@@ -1,9 +1,13 @@
 [package]
 name = "rstrace-cuda-sniff"
+description = "A utility crate for rstrace to sniff CUDA API calls."
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+homepage = "https://github.com/thundergolfer/strace-rs"
+repository = "https://github.com/thundergolfer/strace-rs"
+readme = "../../README.md"
+keywords = ["strace", "syscall", "CUDA", "tracing"]
+categories = ["development-tools"]
 
 [dependencies]
 anyhow = { workspace = true }
