@@ -34,4 +34,4 @@ jobs:
           toolchain: stable
           override: true
       - name: Publish
-        run: cargo publish -p rstrace --locked --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish -p rstrace-cuda-sniff --locked --token ${{ secrets.CARGO_REGISTRY_TOKEN }} && cargo publish -p rstrace --locked --token ${{ secrets.CARGO_REGISTRY_TOKEN }}

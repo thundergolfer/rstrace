@@ -8,6 +8,6 @@ resolver = "2"
 
 [workspace.dependencies]
 rstrace = { path = "crates/rstrace" }
-rstrace-cuda-sniff = { path = "crates/rstrace-cuda-sniff" }
+rstrace-cuda-sniff = { path = "crates/rstrace-cuda-sniff", version = "0.1.0" }
 anyhow = "1.0.86"
 libc = "0.2.139"
