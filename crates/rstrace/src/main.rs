@@ -18,7 +18,7 @@ const NAME: &str = "rstrace";
 #[clap(
     author,
     name = NAME,
-    version = "0.5.0",
+    version = "0.5.1",
     about = "A Rust implementation of strace to trace system calls and CUDA API calls."
 )]
 struct Cli {
