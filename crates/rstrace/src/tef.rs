@@ -46,7 +46,7 @@ impl TefWriter {
     pub fn finalize(&mut self, output: &mut dyn Write, timestamp: u64) -> std::io::Result<()> {
         // NB: emitting a final event is easier than removing the last comma of the previous event.
         let final_event = format!("{{\"name\": \"END\", \"ts\": {timestamp}, \"dur\": 0, \"cat\": \"hi\", \"ph\": \"X\", \"pid\": 1, \"tid\": 1, \"args\": {{}}}}\n");
-        output.write(&mut self.emit_event(final_event).as_bytes())?;
+        output.write_all(self.emit_event(final_event).as_bytes())?;
         output.write_all(b"]")?;
         Ok(())
     }

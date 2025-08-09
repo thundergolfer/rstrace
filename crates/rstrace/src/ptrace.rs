@@ -308,14 +308,14 @@ impl Writer {
             let tptr: *const T = data;
             let p: *const u8 = mem::transmute(tptr);
             for i in 0..buf.capacity() {
-                buf.push(*p.offset(i as isize));
+                buf.push(*p.add(i));
             }
         }
 
         Ok(())
     }
 
-    pub fn write_data(&self, address: Address, buf: &Vec<u8>) -> Result<(), i32> {
+    pub fn write_data(&self, address: Address, buf: &[u8]) -> Result<(), i32> {
         // The end of our range
         let max_addr = address + buf.len() as Address;
         // The last word we can completely overwrite
@@ -335,10 +335,7 @@ impl Writer {
         if max_addr > align_end {
             let buf_start = buf.len() - (max_addr - align_end) as usize;
             let r = Reader::new(self.pid);
-            let mut d = match r.peek_data(align_end) {
-                Ok(v) => v,
-                Err(e) => return Err(e),
-            };
+            let mut d = r.peek_data(align_end)?;
             for word_idx in 0..mem::size_of::<Word>() - 2 {
                 let buf_idx = buf_start + word_idx;
                 d = set_byte(d, word_idx, buf[buf_idx]);
@@ -379,10 +376,7 @@ impl Reader {
         let max_addr = address + buf.capacity() as Address;
         let align_end = max_addr - (max_addr % mem::size_of::<Word>() as Address);
         'finish: for read_addr in (address..align_end).step_by(mem::size_of::<Word>()) {
-            let d = match self.peek_data(read_addr) {
-                Ok(v) => v,
-                Err(e) => return Err(e),
-            };
+            let d = self.peek_data(read_addr)?;
             for word_idx in 0..mem::size_of::<Word>() {
                 let chr = get_byte(d, word_idx);
                 if chr == 0 {
@@ -393,10 +387,7 @@ impl Reader {
             }
         }
         if !end_of_str {
-            let d = match self.peek_data(align_end) {
-                Ok(v) => v,
-                Err(e) => return Err(e),
-            };
+            let d = self.peek_data(align_end)?;
             for word_idx in 0..mem::size_of::<Word>() {
                 let chr = get_byte(d, word_idx);
                 if chr == 0 {

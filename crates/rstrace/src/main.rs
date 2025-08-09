@@ -8,7 +8,6 @@
 use anyhow::Result;
 use rstrace::{trace_attach, trace_command};
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber;
 use tracing_subscriber::EnvFilter;
 
 use clap::{ArgAction, Parser};
@@ -162,10 +161,7 @@ fn main() -> Result<()> {
     }
 
     // Adhere to recommendations in https://clig.dev/#output for colored output configuration.
-    let app_specific_no_color = match std::env::var("RSTRACE_NO_COLOR") {
-        Ok(s) if !s.is_empty() => true,
-        _ => false,
-    };
+    let app_specific_no_color = matches!(std::env::var("RSTRACE_NO_COLOR"), Ok(s) if !s.is_empty());
     let color = cli.color;
     let no_color = cli.no_color || app_specific_no_color;
     let colored_output = if no_color { false } else { color };
@@ -175,10 +171,9 @@ fn main() -> Result<()> {
         stats: rstrace::StatisticsOptions { summary: s },
         cuda_sniff: cli.cuda_sniff,
         cuda_only: cli.cuda_only,
-        colored_output: colored_output,
+        colored_output,
         follow_forks: cli.follow_forks,
         tef: cli.tef,
-        ..Default::default()
     };
 
     if let Some(pid) = cli.pid {
@@ -194,6 +189,6 @@ fn main() -> Result<()> {
                 NAME
             );
         }
-        trace_command(cli.args.into_iter(), &mut output, options)
+        trace_command(cli.args, &mut output, options)
     }
 }

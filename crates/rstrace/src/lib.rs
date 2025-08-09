@@ -9,7 +9,10 @@ extern crate lazy_static;
 
 use std::io::Error;
 use std::ptr;
-use std::{collections::HashMap, ffi::CString};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::CString,
+};
 
 use anyhow::{anyhow, bail, Result};
 use info::{RetCode, EXIT_GROUP_N, EXIT_N, IOCTL_N, OPENAT_N};
@@ -220,6 +223,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
     } else {
         ptrace_init_options()
     };
+    let opts_bits = opts.bits();
 
     if let Err(errno) = ptrace::setoptions(child, opts) {
         bail!(
@@ -231,6 +235,10 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
     // After setting options, single step the child to resume execution.
     debug!(?child, "single step to resume tracee");
     nix::sys::ptrace::syscall(Pid::from_raw(child), None)?;
+
+    // Track all traced PIDs (root and any children when following forks)
+    let mut traced_pids: HashSet<Pid> = HashSet::new();
+    traced_pids.insert(Pid::from_raw(child));
 
     let mut summary_stats: HashMap<u64, SyscallStat> = HashMap::new();
     let mut tef = if options.tef {
@@ -250,7 +258,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
         //
         // The PTRACE_O_TRACESYSGOOD option allows us to differentiate a traced syscall-specific SIGTRAP
         // from other SIGTRAPs, which are sent for other reasons (noted below).
-        let status = nix::sys::wait::waitpid(Pid::from_raw(child), None)
+        let status = nix::sys::wait::waitpid(Pid::from_raw(-1), None)
             .map_err(|errno| anyhow!("waitpid had error. errno {}", errno))?;
 
         // We got a status, so what happened to the child?
@@ -360,31 +368,55 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             //
             // WIFEXITED(status)
             WaitStatus::Exited(pid, _) => {
-                // If the process that exits is the original tracee, we can safely break here,
-                // but we need to continue if the process that exits is a child of the original tracee.
-                if Pid::from_raw(child) == pid {
-                    if options.show_syscalls() {
-                        // Handle the fact that the child has exited before we know the return value
-                        // of the current syscall.
-                        writeln!(output, "?")?;
-                    }
+                // Remove the exited pid from our active set and terminate when all traced PIDs are done
+                if Pid::from_raw(child) == pid && options.show_syscalls() {
+                    // Handle the fact that the child has exited before we know the return value
+                    // of the current syscall.
+                    writeln!(output, "?")?;
+                }
+                traced_pids.remove(&pid);
+                if traced_pids.is_empty() {
                     break;
                 } else {
                     continue;
-                };
+                }
             }
             // The traced process was stopped by a `PTRACE_EVENT_*` event.
             WaitStatus::PtraceEvent(pid, _, code) => {
+                // Handle fork/vfork/clone events by adding the new child to our traced set
+                if options.follow_forks
+                    && (code == ptrace::Event::Fork as i32
+                        || code == ptrace::Event::VFork as i32
+                        || code == ptrace::Event::Clone as i32)
+                {
+                    // The event message contains the new child's PID
+                    let new_child_raw = getevent(pid)? as i32;
+                    let new_child = Pid::from_raw(new_child_raw);
+                    traced_pids.insert(new_child);
+                    // Inherit/set options for the new child and start it
+                    let _ = ptrace::setoptions(
+                        new_child.as_raw(),
+                        ptrace::Options::from_bits_truncate(opts_bits),
+                    );
+                    if options.show_syscalls() {
+                        writeln!(output, "Attaching to child {}", new_child)?;
+                    }
+                    // Resume the new child
+                    nix::sys::ptrace::syscall(new_child, None)?;
+                    // Resume the forking parent
+                    nix::sys::ptrace::syscall(pid, None)?;
+                    continue;
+                }
                 fn is_exit_syscall(pid: &Pid) -> Result<bool> {
                     let registers = ptrace::getregs(pid.as_raw())
                         .map_err(|errno| anyhow!("ptrace failed errno {}", errno))?;
                     let reg = registers.orig_rax;
-                    Ok(reg == EXIT_N as u64 || reg == EXIT_GROUP_N as u64)
+                    Ok(reg == EXIT_N || reg == EXIT_GROUP_N)
                 }
 
                 // We stop at the PTRACE_EVENT_EXIT event because of the PTRACE_O_TRACEEXIT option.
                 // We do this to properly catch and log exit-family syscalls, which do not have an PTRACE_SYSCALL_INFO_EXIT event.
-                if code == PtraceSyscallInfo::Exit as i32 && is_exit_syscall(&pid)? {
+                if code == ptrace::Event::Exit as i32 && is_exit_syscall(&pid)? {
                     let start = std::time::Instant::now();
                     let t: String = make_ts(&options.t)?;
                     record_syscall_exit(
@@ -412,6 +444,10 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                     signal,
                     if coredump { "(core dumped)" } else { "" }
                 )?;
+                traced_pids.remove(&pid);
+                if traced_pids.is_empty() {
+                    break;
+                }
                 break;
             }
             // WIFCONTINUED(status), this usually happens when a process receives a SIGCONT.
@@ -577,7 +613,7 @@ fn record_syscall_exit(
     if show_syscalls {
         match ret_code {
             RetCode::Err(errno) => {
-                let err_name: Errno = Errno::from_raw(errno as i32);
+                let err_name: Errno = Errno::from_raw(errno);
                 if let Some(ref mut tef) = tef {
                     let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
                     write!(output, "{}", e)?;
