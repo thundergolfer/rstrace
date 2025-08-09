@@ -21,7 +21,7 @@ app = modal.App(
     secrets=[modal.Secret.from_name("rstrace-github-token")],
 )
 
-@app.function(gpu="any", timeout=240)
+@app.function(gpu="any", timeout=240, scaledown_window=2)
 def test_on_gpu(commit_sha: str = ""):
     token = os.environ["GITHUB_TOKEN"]
     address = f"https://{token}@github.com/thundergolfer/rstrace.git"
