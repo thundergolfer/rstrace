@@ -1,22 +1,204 @@
-name: Release
+name: Release Publish and Assets
 
 on:
-  push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+  release:
+    types: [published]
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  create_release:
-    name: Create Release
+  publish-crates:
+    name: Publish Crates to crates.io
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Cache cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Publish workspace crates
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "CARGO_REGISTRY_TOKEN secret is not set" >&2
+            exit 1
+          fi
+
+          # Get all workspace crate names that are publishable (publish != false)
+          mapfile -t CRATES < <(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.publish != false) | .name')
+          if [ ${#CRATES[@]} -eq 0 ]; then
+            echo "No publishable workspace crates found" >&2
+            exit 1
+          fi
+
+          declare -A PUBLISHED=()
+          for c in "${CRATES[@]}"; do PUBLISHED["$c"]=0; done
+
+          max_rounds=10
+          for round in $(seq 1 "$max_rounds"); do
+            echo "Publish round $round"
+            any_progress=0
+
+            for crate in "${CRATES[@]}"; do
+              if [ "${PUBLISHED[$crate]}" -eq 1 ]; then
+                continue
+              fi
+              echo "Attempting to publish $crate"
+
+              set +e
+              OUTPUT=$(cargo publish -p "$crate" --token "$CARGO_REGISTRY_TOKEN" 2>&1)
+              STATUS=$?
+              set -e
+
+              if [ $STATUS -eq 0 ]; then
+                echo "Published $crate"
+                PUBLISHED["$crate"]=1
+                any_progress=1
+                continue
+              fi
+
+              # Already uploaded error
+              if echo "$OUTPUT" | grep -qiE "already uploaded|is already uploaded|crate version .* is already uploaded"; then
+                echo "$crate is already published"
+                PUBLISHED["$crate"]=1
+                any_progress=1
+                continue
+              fi
+
+              echo "Deferring $crate to later round. Last output:" >&2
+              echo "$OUTPUT" >&2
+            done
+
+            # Check if all crates are done
+            all_done=1
+            for crate in "${CRATES[@]}"; do
+              if [ "${PUBLISHED[$crate]}" -eq 0 ]; then
+                all_done=0
+                break
+              fi
+            done
+
+            if [ $all_done -eq 1 ]; then
+              echo "All crates published or already uploaded."
+              exit 0
+            fi
+
+            echo "Sleeping 30s to allow crates.io index updates..."
+            sleep 30
+          done
+
+          echo "Failed to publish all crates after $max_rounds rounds" >&2
+          echo "Remaining crates:" >&2
+          for crate in "${CRATES[@]}"; do
+            if [ "${PUBLISHED[$crate]}" -eq 0 ]; then echo " - $crate" >&2; fi
+          done
+          exit 1
+
+  build-and-upload:
+    name: Build and Upload Release Binaries
+    needs: publish-crates
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Cache cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Determine version and target
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          HOST_TRIPLE=$(rustc -Vv | awk '/host:/ {print $2}')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "triple=$HOST_TRIPLE" >> "$GITHUB_OUTPUT"
+
+      - name: Build release binaries
+        run: cargo build --release --workspace --bins
+
+      - name: Package binaries (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          TRIPLE='${{ steps.meta.outputs.triple }}'
+          VERSION='${{ steps.meta.outputs.version }}'
+          shopt -s nullglob
+          for BIN_PATH in target/release/*; do
+            if [ -f "$BIN_PATH" ] && [ -x "$BIN_PATH" ]; then
+              BIN_NAME=$(basename "$BIN_PATH")
+              ARCHIVE="dist/${BIN_NAME}-${VERSION}-${TRIPLE}.tar.gz"
+              tar -C target/release -czf "$ARCHIVE" "$BIN_NAME"
+              echo "Created $ARCHIVE"
+            fi
+          done
+
+      - name: Package binaries (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          TRIPLE='${{ steps.meta.outputs.triple }}'
+          VERSION='${{ steps.meta.outputs.version }}'
+          shopt -s nullglob
+          for BIN_PATH in target/release/*.exe; do
+            BIN_NAME=$(basename "$BIN_PATH" .exe)
+            ARCHIVE="dist/${BIN_NAME}-${VERSION}-${TRIPLE}.zip"
+            7z a "$ARCHIVE" "$BIN_PATH" >/dev/null
+            echo "Created $ARCHIVE"
+          done
+
+      - name: Upload assets to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
