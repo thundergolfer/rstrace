@@ -1,7 +1,7 @@
 [package]
 name = "rstrace-cuda-sniff"
 description = "A utility crate for rstrace to sniff CUDA API calls."
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/thundergolfer/strace-rs"
