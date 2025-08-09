@@ -111,6 +111,8 @@ pub struct TraceOptions {
     pub cuda_sniff: bool,
     /// Whether to only show CUDA-related output.
     pub cuda_only: bool,
+    /// Whether to output human readable information about CUDA ioctls.
+    pub cuda_verbose: bool,
     /// Whether to emit colored output.
     pub colored_output: bool,
     /// Whether to follow forks (ie. child processes).
@@ -192,15 +194,6 @@ where
     bail!("errno = {} ({})", errno, error_name)
 }
 
-// Defined in <linux/ptrace.h>, indicating what type of stop occurred.
-#[derive(Debug)]
-enum PtraceSyscallInfo {
-    None = 0,
-    Entry = 1,
-    Exit = 2,
-    Seccomp = 3,
-}
-
 fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) -> Result<()> {
     debug!(%child, "starting trace of child");
     let trace_start = std::time::Instant::now();
@@ -240,6 +233,10 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
     let mut traced_pids: HashSet<Pid> = HashSet::new();
     traced_pids.insert(Pid::from_raw(child));
 
+    // Track whether a given PID is currently between syscall entry and exit.
+    // Presence in this set means the next PtraceSyscall stop is an exit for that PID.
+    let mut in_syscall: HashSet<Pid> = HashSet::new();
+
     let mut summary_stats: HashMap<u64, SyscallStat> = HashMap::new();
     let mut tef = if options.tef {
         Some(tef::TefWriter::new())
@@ -270,31 +267,27 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             // The child is now stopped and the tracer can record the syscall entry and exit, and then the tracer
             // is responsible for resuming the child.
             WaitStatus::PtraceSyscall(pid) => {
-                // ptrace(PTRACE_GETEVENTMSG,...) can be one of four values here:
-                let event = match getevent(pid)? as u8 {
-                    0 => PtraceSyscallInfo::None,
-                    1 => PtraceSyscallInfo::Entry,
-                    2 => PtraceSyscallInfo::Exit,
-                    3 => PtraceSyscallInfo::Seccomp,
-                    _ => bail!("unknown syscall event"),
-                };
+                // Distinguish syscall entry vs exit using a per-PID toggle.
+                // If PID is not in the set, this stop is an entry; otherwise it's an exit.
+                let entering = !in_syscall.contains(&pid);
 
-                // Snapshot current time, to avoid polluting the syscall time with
-                // non-syscall related latency.
-                let start = std::time::Instant::now();
-                // TODO: it's a bit weird to recalc the timestamp on syscall exit and use it in CUDA output.
-                let t: String = make_ts(&options.t)?;
-
-                match event {
-                    PtraceSyscallInfo::Entry => record_syscall_entry(
+                if entering {
+                    record_syscall_entry(
                         pid.into(),
                         &options,
                         output,
                         &trace_start,
                         &mut tef,
                         &mut summary_stats,
-                    )?,
-                    PtraceSyscallInfo::Exit => record_syscall_exit(
+                    )?;
+                    in_syscall.insert(pid);
+                } else {
+                    // Snapshot current time, to avoid polluting the syscall time with
+                    // non-syscall related latency.
+                    let start = std::time::Instant::now();
+                    // TODO: it's a bit weird to recalc the timestamp on syscall exit and use it in CUDA output.
+                    let t: String = make_ts(&options.t)?;
+                    record_syscall_exit(
                         pid.into(),
                         &start,
                         &options,
@@ -303,9 +296,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         output,
                         &trace_start,
                         &t,
-                    )?,
-                    PtraceSyscallInfo::Seccomp => warn!("unexpected seccomp syscall event"),
-                    PtraceSyscallInfo::None => {}
+                    )?;
+                    in_syscall.remove(&pid);
                 }
 
                 nix::sys::ptrace::syscall(pid, None)?; // resume the child.
@@ -331,6 +323,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         &mut tef,
                         &mut summary_stats,
                     )?;
+                    // Mark that we've seen an entry for this PID so the next syscall stop is treated as exit.
+                    in_syscall.insert(pid);
                     nix::sys::ptrace::syscall(pid, None)?;
                     continue;
                 }
@@ -375,6 +369,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                     writeln!(output, "?")?;
                 }
                 traced_pids.remove(&pid);
+                in_syscall.remove(&pid);
                 if traced_pids.is_empty() {
                     break;
                 } else {
@@ -429,6 +424,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         &trace_start,
                         &t,
                     )?;
+                    in_syscall.remove(&pid);
                 }
 
                 nix::sys::ptrace::syscall(pid, None)?;
@@ -445,6 +441,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                     if coredump { "(core dumped)" } else { "" }
                 )?;
                 traced_pids.remove(&pid);
+                in_syscall.remove(&pid);
                 if traced_pids.is_empty() {
                     break;
                 }
@@ -656,9 +653,13 @@ fn record_syscall_exit(
             let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
             let argp = syscall_arg_registers.get(2).expect("must exist for ioctl") as *const u64
                 as *mut libc::c_void;
-            if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp)? {
-                let ioctl = render_cuda(options.colored_output, ioctl);
-                writeln!(output, "  {}{}", timestamp, ioctl)?;
+            if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp, options.cuda_verbose)? {
+                let info = render_cuda(options.colored_output, ioctl)
+                    .split('\n')
+                    .map(|line| format!("  {}", line))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                writeln!(output, "{}{}", timestamp, info)?;
             }
         }
     }

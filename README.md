@@ -8,6 +8,8 @@
 
 rstrace is a Rust implementation of `strace`. It allows the user to trace system calls of a process or command.
 
+![asciinema demo](assets/rstrace.svg)
+
 ## Install
 
 ### Binary download

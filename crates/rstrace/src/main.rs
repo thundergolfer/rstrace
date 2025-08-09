@@ -18,7 +18,7 @@ const NAME: &str = "rstrace";
 #[clap(
     author,
     name = NAME,
-    version = "0.5.1",
+    version = "0.6.0",
     about = "A Rust implementation of strace to trace system calls and CUDA API calls."
 )]
 struct Cli {
@@ -68,6 +68,14 @@ struct Cli {
     tef: bool,
 
     #[clap(
+        long = "verbose",
+        help = "Output human readable information about CUDA ioctls.",
+        action = ArgAction::SetTrue,
+        default_value_t = false
+    )]
+    verbose: bool,
+
+    #[clap(
         long = "cuda",
         help = "Enable CUDA ioctl sniffing. [Requires 'cuda_sniff' feature]",
         action = ArgAction::SetTrue
@@ -99,11 +107,9 @@ struct Cli {
 
     #[clap(
         long = "color",
-        help = "Enable colored output",
+        help = "Enable colored output (default)",
         action = ArgAction::SetTrue,
-        default_value_t = false,
-        value_parser = clap::builder::FalseyValueParser::new(),
-        env = "FORCE_COLOR"
+        default_value_t = true
     )]
     color: bool,
 
@@ -161,16 +167,15 @@ fn main() -> Result<()> {
     }
 
     // Adhere to recommendations in https://clig.dev/#output for colored output configuration.
-    let app_specific_no_color = matches!(std::env::var("RSTRACE_NO_COLOR"), Ok(s) if !s.is_empty());
-    let color = cli.color;
-    let no_color = cli.no_color || app_specific_no_color;
-    let colored_output = if no_color { false } else { color };
+    let no_color = cli.no_color;
+    let colored_output = if no_color { false } else { cli.color };
 
     let options = rstrace::TraceOptions {
         t,
         stats: rstrace::StatisticsOptions { summary: s },
         cuda_sniff: cli.cuda_sniff,
         cuda_only: cli.cuda_only,
+        cuda_verbose: cli.verbose,
         colored_output,
         follow_forks: cli.follow_forks,
         tef: cli.tef,
