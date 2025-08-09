@@ -1,6 +1,6 @@
 [package]
 name = "rstrace"
-version = "0.3.1"
+version = "0.4.1"
 edition = "2021"
 license = "MIT"
 description = "A Rust implementation of strace to trace system calls and CUDA API calls."
