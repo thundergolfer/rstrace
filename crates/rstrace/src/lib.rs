@@ -192,17 +192,6 @@ where
     bail!("errno = {} ({})", errno, error_name)
 }
 
-// Defined in <linux/ptrace.h>, indicating what type of stop occurred.
-#[derive(Debug)]
-#[repr(u8)]
-enum PtraceSyscallInfo {
-    None = 0,
-    Entry = 1,
-    Exit = 2,
-    Seccomp = 3,
-    Unknown(u8),
-}
-
 fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) -> Result<()> {
     debug!(%child, "starting trace of child");
     let trace_start = std::time::Instant::now();
