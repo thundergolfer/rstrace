@@ -276,7 +276,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                     1 => PtraceSyscallInfo::Entry,
                     2 => PtraceSyscallInfo::Exit,
                     3 => PtraceSyscallInfo::Seccomp,
-                    _ => bail!("unknown syscall event"),
+                    unknown => bail!("unknown syscall event: {}", unknown),
                 };
 
                 // Snapshot current time, to avoid polluting the syscall time with
