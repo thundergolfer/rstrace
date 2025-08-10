@@ -111,6 +111,8 @@ pub struct TraceOptions {
     pub cuda_sniff: bool,
     /// Whether to only show CUDA-related output.
     pub cuda_only: bool,
+    /// Whether to output human readable information about CUDA ioctls.
+    pub cuda_verbose: bool,
     /// Whether to emit colored output.
     pub colored_output: bool,
     /// Whether to follow forks (ie. child processes).
@@ -651,9 +653,13 @@ fn record_syscall_exit(
             let request = syscall_arg_registers.get(1).expect("must exist for ioctl");
             let argp = syscall_arg_registers.get(2).expect("must exist for ioctl") as *const u64
                 as *mut libc::c_void;
-            if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp)? {
-                let ioctl = render_cuda(options.colored_output, ioctl);
-                writeln!(output, "  {}{}", timestamp, ioctl)?;
+            if let Some(ioctl) = sniff_ioctl(*fd as i32, *request, argp, options.cuda_verbose)? {
+                let info = render_cuda(options.colored_output, ioctl)
+                    .split('\n')
+                    .map(|line| format!("  {}", line))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                writeln!(output, "{}{}", timestamp, info)?;
             }
         }
     }

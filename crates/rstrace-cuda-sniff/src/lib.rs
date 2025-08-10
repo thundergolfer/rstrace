@@ -38,7 +38,12 @@ use nvalloc_unix_include::*;
 
 /// Sniffs an ioctl syscall and if it determines that the ioctl is NVIDIA
 /// related returns trace log output. Otherwise, returns None.
-pub fn sniff_ioctl(fd: c_int, request: c_ulong, argp: *mut c_void) -> Result<Option<String>> {
+pub fn sniff_ioctl(
+    fd: c_int,
+    request: c_ulong,
+    argp: *mut c_void,
+    verbose: bool,
+) -> Result<Option<String>> {
     let _ = fd;
     let _ = argp;
 
@@ -62,7 +67,15 @@ pub fn sniff_ioctl(fd: c_int, request: c_ulong, argp: *mut c_void) -> Result<Opt
         }
         NV_ESC_ALLOC_OS_EVENT => format!("NV_ESC_ALLOC_OS_EVENT"),
         NV_ESC_FREE_OS_EVENT => format!("NV_ESC_FREE_OS_EVENT"),
-        NV_ESC_CHECK_VERSION_STR => format!("NV_ESC_CHECK_VERSION_STR"),
+        NV_ESC_CHECK_VERSION_STR => {
+            let info = "Performed immediately following opening of the nvidiactl device. \
+                Returns the version of the NVIDIA resource manager API.";
+            if verbose {
+                format!("NV_ESC_CHECK_VERSION_STR\n{info}")
+            } else {
+                format!("NV_ESC_CHECK_VERSION_STR")
+            }
+        }
         NV_ESC_ATTACH_GPUS_TO_FD => format!("NV_ESC_ATTACH_GPUS_TO_FD"),
         NV_ESC_SYS_PARAMS => format!("NV_ESC_SYS_PARAMS"),
         NV_ESC_WAIT_OPEN_COMPLETE => format!("NV_ESC_WAIT_OPEN_COMPLETE"),

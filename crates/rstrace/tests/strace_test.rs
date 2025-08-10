@@ -38,6 +38,7 @@ fn test_trace_echo() -> Result<()> {
         stats: rstrace::StatisticsOptions {
             summary: rstrace::SummaryOption::SummaryOnly,
         },
+        cuda_verbose: false,
         ..Default::default()
     };
     let program = vec!["echo".to_string(), "hello".into()];
@@ -84,6 +85,7 @@ fn test_follow_forks() -> Result<()> {
             summary: rstrace::SummaryOption::SummaryOnly,
         },
         follow_forks: true,
+        cuda_verbose: false,
         ..Default::default()
     };
 
