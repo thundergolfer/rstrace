@@ -194,11 +194,13 @@ where
 
 // Defined in <linux/ptrace.h>, indicating what type of stop occurred.
 #[derive(Debug)]
+#[repr(u8)]
 enum PtraceSyscallInfo {
     None = 0,
     Entry = 1,
     Exit = 2,
     Seccomp = 3,
+    Unknown(u8),
 }
 
 fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) -> Result<()> {
@@ -276,7 +278,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                     1 => PtraceSyscallInfo::Entry,
                     2 => PtraceSyscallInfo::Exit,
                     3 => PtraceSyscallInfo::Seccomp,
-                    unknown => bail!("unknown syscall event: {}", unknown),
+                    unknown => PtraceSyscallInfo::Unknown(unknown),
                 };
 
                 // Snapshot current time, to avoid polluting the syscall time with
@@ -306,6 +308,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                     )?,
                     PtraceSyscallInfo::Seccomp => warn!("unexpected seccomp syscall event"),
                     PtraceSyscallInfo::None => {}
+                    PtraceSyscallInfo::Unknown(unknown) => warn!("unknown syscall event: {}", unknown),
                 }
 
                 nix::sys::ptrace::syscall(pid, None)?; // resume the child.
