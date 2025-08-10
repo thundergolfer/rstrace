@@ -56,7 +56,7 @@ jobs:
         run: uv python install
 
       - name: Install Modal
-        run: uv pip install --system modal
+        run: uv pip install modal
 
       - name: Run tests
         run: |
