@@ -99,11 +99,9 @@ struct Cli {
 
     #[clap(
         long = "color",
-        help = "Enable colored output",
+        help = "Enable colored output (default)",
         action = ArgAction::SetTrue,
-        default_value_t = false,
-        value_parser = clap::builder::FalseyValueParser::new(),
-        env = "FORCE_COLOR"
+        default_value_t = true
     )]
     color: bool,
 
@@ -161,10 +159,8 @@ fn main() -> Result<()> {
     }
 
     // Adhere to recommendations in https://clig.dev/#output for colored output configuration.
-    let app_specific_no_color = matches!(std::env::var("RSTRACE_NO_COLOR"), Ok(s) if !s.is_empty());
-    let color = cli.color;
-    let no_color = cli.no_color || app_specific_no_color;
-    let colored_output = if no_color { false } else { color };
+    let no_color = cli.no_color;
+    let colored_output = if no_color { false } else { cli.color };
 
     let options = rstrace::TraceOptions {
         t,
