@@ -1,7 +1,7 @@
-#!/bin/env bash
+#!/bin/env sh
 
 # This is a short script to install the latest version of the thundergolfer/rstrace binary.
-set -euo pipefail
+set -eu
 
 
 case "$(uname -s)" in
@@ -28,7 +28,7 @@ if [ "$arch" != "x86_64" ]; then
 fi
 
 
-url="https://github.com/thundergolfer/rstrace/releases/download/latest/rstrace-${arch}-${suffix}.tar.gz"
+url="https://github.com/thundergolfer/rstrace/releases/latest/download/rstrace-${arch}${suffix}.tar.gz"
 
 if [ -z "${NO_COLOR:-}" ]; then
   ansi_reset="\033[0m"
@@ -54,7 +54,7 @@ case $cmd in
 esac
 
 printf "${ansi_reset}${ansi_info}↯ Downloading rstrace from ${ansi_underline}%s${ansi_reset}\n" "$url"
-http_code=$(curl "$url" -o "$temp" -w "%{http_code}")
+http_code=$(curl -L "$url" -o "$temp" -w "%{http_code}")
 if [ "$http_code" -lt 200 ] || [ "$http_code" -gt 299 ]; then
   printf "${ansi_error}Error: Request had status code ${http_code}.\n"
   cat "$temp" 1>&2
