@@ -216,7 +216,6 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
     } else {
         ptrace_init_options()
     };
-    let opts_bits = opts.bits();
 
     if let Err(errno) = ptrace::setoptions(child, opts) {
         bail!(
@@ -388,16 +387,10 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                     let new_child_raw = getevent(pid)? as i32;
                     let new_child = Pid::from_raw(new_child_raw);
                     traced_pids.insert(new_child);
-                    // Inherit/set options for the new child and start it
-                    let _ = ptrace::setoptions(
-                        new_child.as_raw(),
-                        ptrace::Options::from_bits_truncate(opts_bits),
-                    );
+                    // Options are inherited by the child; do not try to set or resume it here to avoid ESRCH races.
                     if options.show_syscalls() {
                         writeln!(output, "Attaching to child {}", new_child)?;
                     }
-                    // Resume the new child
-                    nix::sys::ptrace::syscall(new_child, None)?;
                     // Resume the forking parent
                     nix::sys::ptrace::syscall(pid, None)?;
                     continue;
