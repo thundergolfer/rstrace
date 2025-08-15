@@ -55,12 +55,21 @@ pub fn sniff_ioctl(
         return Ok(None);
     }
 
+    // Useful -> https://nick-black.com/dankwiki/index.php/Libcudest
     let output = match nr {
         0x00 => {
             format!("WOW! An NVIDIA ioctl. {:#x} {:#x}", request, type_)
         }
         // From kernel-open/common/inc/nv-ioctl-numbers.h:
-        NV_ESC_CARD_INFO => format!("NV_ESC_CARD_INFO"),
+        NV_ESC_CARD_INFO => {
+            let params = argp as *const nv_ioctl_card_info_t;  
+            if verbose {
+                let info = format!("Asking about GPU index {:?}", unsafe { (*params).gpu_id });
+                format!("NV_ESC_CARD_INFO\n{info}")
+            } else {
+                format!("NV_ESC_CARD_INFO")
+            }
+        },
         NV_ESC_REGISTER_FD => {
             let params = argp as *const nv_ioctl_register_fd_t;
             format!("NV_ESC_REGISTER_FD fd: {}", unsafe { (*params).ctl_fd })
@@ -71,7 +80,7 @@ pub fn sniff_ioctl(
             let info = "Performed immediately following opening of the nvidiactl device. \
                 Returns the version of the NVIDIA resource manager API.";
             if verbose {
-                format!("NV_ESC_CHECK_VERSION_STR\n{info}")
+                format!("NV_ESC_CHECK_VERSION_STR: {info}")
             } else {
                 format!("NV_ESC_CHECK_VERSION_STR")
             }
@@ -90,7 +99,10 @@ pub fn sniff_ioctl(
         }
         NV_ESC_RM_FREE => format!("NV_ESC_RM_FREE"),
         NV_ESC_RM_CONTROL => format!("NV_ESC_RM_CONTROL"),
-        NV_ESC_RM_ALLOC => format!("NV_ESC_RM_ALLOC"),
+        NV_ESC_RM_ALLOC => {
+            let params = argp as *const nv_ioctl_nvos02_parameters_with_fd;
+            format!("NV_ESC_RM_ALLOC: {:?}", unsafe { (*params).params })
+        },
         NV_ESC_RM_VID_HEAP_CONTROL => {
             let params = argp as *const common_sdk_nvidia::NVOS32_PARAMETERS;
             unsafe {
@@ -105,7 +117,10 @@ pub fn sniff_ioctl(
                 }
             }
         }
-        NV_ESC_RM_MAP_MEMORY => format!("NV_ESC_RM_MAP_MEMORY"),
+        NV_ESC_RM_MAP_MEMORY => {
+            let params = argp as *const nv_ioctl_nvos33_parameters_with_fd;
+            format!("NV_ESC_RM_MAP_MEMORY: {:?}", unsafe { (*params).params })
+        },
         NV_ESC_RM_UNMAP_MEMORY => format!("NV_ESC_RM_UNMAP_MEMORY"),
         NV_ESC_RM_UPDATE_DEVICE_MAPPING_INFO => format!("NV_ESC_RM_UPDATE_DEVICE_MAPPING_INFO"),
 
