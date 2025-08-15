@@ -45,10 +45,12 @@ Options:
   -C, --summary          like -c, but also print the regular output
   -j, --summary-json     Count time, calls, and errors for each syscall and report summary in JSON format
       --tef              Emit Trace Event Format (TEF) trace data as output
+      --verbose          Output human readable information about CUDA ioctls.
       --cuda             Enable CUDA ioctl sniffing. [Requires 'cuda_sniff' feature]
       --cuda-only        Enable CUDA ioctl sniffing and disable all other output. [Requires 'cuda_sniff' feature]
   -p, --attach <PID>     Attach to the process with the process ID pid and begin tracing.
-      --color            Enable colored output
+  -f, --follow-forks     Trace child processes as they are created by currently traced processes as a result of the fork(2), vfork(2) and clone(2) system calls.
+      --color            Enable colored output (default)
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -66,3 +68,6 @@ unlike `strace-rs` which uses ptrace.
 - https://github.com/JakWai01/lurk
 
 - https://github.com/strace/strace
+
+- https://github.com/bpftrace/bpftrace
+    - [Don't use rstrace/strace in production](https://www.brendangregg.com/blog/2014-05-11/strace-wow-much-syscall.html). Where feasible use `bpftrace` which is a more powerful tracing tool with much lower overhead.
