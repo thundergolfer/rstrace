@@ -173,7 +173,7 @@ jobs:
           for BIN_PATH in target/release/*; do
             if [ -f "$BIN_PATH" ] && [ -x "$BIN_PATH" ]; then
               BIN_NAME=$(basename "$BIN_PATH")
-              ARCHIVE="dist/${BIN_NAME}-${VERSION}-${TRIPLE}.tar.gz"
+              ARCHIVE="dist/${BIN_NAME}-${TRIPLE}.tar.gz"
               tar -C target/release -czf "$ARCHIVE" "$BIN_NAME"
               echo "Created $ARCHIVE"
             fi
@@ -190,7 +190,7 @@ jobs:
           shopt -s nullglob
           for BIN_PATH in target/release/*.exe; do
             BIN_NAME=$(basename "$BIN_PATH" .exe)
-            ARCHIVE="dist/${BIN_NAME}-${VERSION}-${TRIPLE}.zip"
+            ARCHIVE="dist/${BIN_NAME}-${TRIPLE}.zip"
             7z a "$ARCHIVE" "$BIN_PATH" >/dev/null
             echo "Created $ARCHIVE"
           done

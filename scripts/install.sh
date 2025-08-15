@@ -1,13 +1,11 @@
-#!/bin/sh
+#!/bin/env bash
 
 # This is a short script to install the latest version of the thundergolfer/rstrace binary.
-set -e
-set -u
-set -o pipefail
+set -euo pipefail
 
 
 case "$(uname -s)" in
-  Linux*) suffix="-unknown-linux-musl";;
+  Linux*) suffix="-unknown-linux-gnu";;
   Darwin*) suffix="-apple-darwin";;
   FreeBSD*) suffix="-unknown-freebsd";;
   MINGW*|MSYS*|CYGWIN*)
@@ -32,7 +30,7 @@ fi
 
 url="https://github.com/thundergolfer/rstrace/releases/download/latest/rstrace-${arch}-${suffix}.tar.gz"
 
-if [ -z "$NO_COLOR" ]; then
+if [ -z "${NO_COLOR:-}" ]; then
   ansi_reset="\033[0m"
   ansi_info="\033[35;1m"
   ansi_error="\033[31m"
