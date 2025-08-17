@@ -362,7 +362,10 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             // WIFEXITED(status)
             WaitStatus::Exited(pid, _) => {
                 // Remove the exited pid from our active set and terminate when all traced PIDs are done
-                if Pid::from_raw(child) == pid && options.show_syscalls() && in_syscall.contains(&pid) {
+                if Pid::from_raw(child) == pid
+                    && options.show_syscalls()
+                    && in_syscall.contains(&pid)
+                {
                     // Handle the fact that the child has exited before we know the return value
                     // of the current syscall.
                     writeln!(output, "?")?;

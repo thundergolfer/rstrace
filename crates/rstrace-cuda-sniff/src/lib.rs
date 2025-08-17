@@ -62,14 +62,14 @@ pub fn sniff_ioctl(
         }
         // From kernel-open/common/inc/nv-ioctl-numbers.h:
         NV_ESC_CARD_INFO => {
-            let params = argp as *const nv_ioctl_card_info_t;  
+            let params = argp as *const nv_ioctl_card_info_t;
             if verbose {
                 let info = format!("Asking about GPU index {:?}", unsafe { (*params).gpu_id });
                 format!("NV_ESC_CARD_INFO\n{info}")
             } else {
                 format!("NV_ESC_CARD_INFO")
             }
-        },
+        }
         NV_ESC_REGISTER_FD => {
             let params = argp as *const nv_ioctl_register_fd_t;
             format!("NV_ESC_REGISTER_FD fd: {}", unsafe { (*params).ctl_fd })
@@ -102,7 +102,7 @@ pub fn sniff_ioctl(
         NV_ESC_RM_ALLOC => {
             let params = argp as *const nv_ioctl_nvos02_parameters_with_fd;
             format!("NV_ESC_RM_ALLOC: {:?}", unsafe { (*params).params })
-        },
+        }
         NV_ESC_RM_VID_HEAP_CONTROL => {
             let params = argp as *const common_sdk_nvidia::NVOS32_PARAMETERS;
             unsafe {
@@ -120,7 +120,7 @@ pub fn sniff_ioctl(
         NV_ESC_RM_MAP_MEMORY => {
             let params = argp as *const nv_ioctl_nvos33_parameters_with_fd;
             format!("NV_ESC_RM_MAP_MEMORY: {:?}", unsafe { (*params).params })
-        },
+        }
         NV_ESC_RM_UNMAP_MEMORY => format!("NV_ESC_RM_UNMAP_MEMORY"),
         NV_ESC_RM_UPDATE_DEVICE_MAPPING_INFO => format!("NV_ESC_RM_UPDATE_DEVICE_MAPPING_INFO"),
 
