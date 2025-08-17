@@ -209,9 +209,6 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
     // Now that we've waited for the tracee to be ready, set the ptrace options.
     debug!(?child, "set options");
     let opts = if options.follow_forks {
-        // TODO(Jonathon): currently enabling this
-        // breaks the implementation because I've only ever been waiting on the
-        // child process, and not on any of its children.
         ptrace_init_options_with_follow_forks()
     } else {
         ptrace_init_options()
