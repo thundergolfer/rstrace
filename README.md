@@ -6,11 +6,14 @@
 
 ![CI status](https://github.com/thundergolfer/rstrace/actions/workflows/ci.yml/badge.svg)
 
-rstrace is a Rust implementation of `strace`. It allows the user to trace system calls of a process or command.
+rstrace is a Rust implementation of `strace` for x86 Linux. It allows the user to trace system calls of a process or command.
 
 ![asciinema demo](assets/rstrace.svg)
 
 ## Install
+
+> [!NOTE]
+> Currently only x86 Linux is supported. aarch64 support is planned, but MacOS support is out-of-scope.
 
 ### Binary download
 
