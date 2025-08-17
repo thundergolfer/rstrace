@@ -76,7 +76,13 @@ fn make_ts(t_opt: &TimestampOption) -> Result<String> {
                 .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
             format!("{} ", now.format(&format).unwrap())
         }
-        TimestampOption::AbsoluteUNIXUsecs => todo!(),
+        TimestampOption::AbsoluteUNIXUsecs => {
+            let now = time::OffsetDateTime::now_local()
+                .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+            let secs = now.unix_timestamp();
+            let micros = now.microsecond();
+            format!("{}.{:06} ", secs, micros)
+        }
     };
     Ok(t)
 }
