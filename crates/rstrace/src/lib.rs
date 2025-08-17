@@ -362,7 +362,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             // WIFEXITED(status)
             WaitStatus::Exited(pid, _) => {
                 // Remove the exited pid from our active set and terminate when all traced PIDs are done
-                if Pid::from_raw(child) == pid && options.show_syscalls() {
+                if Pid::from_raw(child) == pid && options.show_syscalls() && in_syscall.contains(&pid) {
                     // Handle the fact that the child has exited before we know the return value
                     // of the current syscall.
                     writeln!(output, "?")?;
@@ -599,11 +599,25 @@ fn record_syscall_exit(
         stat.latency += duration;
     }
 
+    // exit/exit_group never return a value; strace prints "?" for their retval.
+    if syscall_num == EXIT_N || syscall_num == EXIT_GROUP_N {
+        if show_syscalls {
+            if let Some(ref mut tef) = tef {
+                let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
+                write!(output, "{}", e)?;
+            } else {
+                writeln!(output, "?")?;
+            }
+        }
+        return Ok(());
+    }
+
     let ret_code = RetCode::from_raw(registers.rax);
     if show_syscalls {
         match ret_code {
             RetCode::Err(errno) => {
-                let err_name: Errno = Errno::from_raw(errno);
+                // Kernel returns negative errno in rax; convert to positive for mapping/name.
+                let err_name: Errno = Errno::from_raw((-errno) as i32);
                 if let Some(ref mut tef) = tef {
                     let e = tef.emit_duration_end(name, trace_start.elapsed().as_micros() as u64);
                     write!(output, "{}", e)?;
