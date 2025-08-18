@@ -8,7 +8,7 @@
 
 rstrace is a Rust implementation of `strace` for x86 Linux. It allows the user to trace system calls of a process or command.
 
-Unlike `rstrace` it can introspect NVIDIA CUDA system calls.
+Unlike `strace` it can introspect NVIDIA CUDA system calls.
 
 ![asciinema demo](assets/rstrace.svg)
 
