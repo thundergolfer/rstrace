@@ -240,9 +240,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
     let mut traced_pids: HashSet<Pid> = HashSet::new();
     traced_pids.insert(Pid::from_raw(child));
 
-    // Track whether a given PID is currently between syscall entry and exit.
-    // Presence in this set means the next PtraceSyscall stop is an exit for that PID.
-    let mut in_syscall: HashSet<Pid> = HashSet::new();
+    // Track per-PID syscall entry timestamps. Presence means the next PtraceSyscall stop is an exit.
+    let mut syscall_start_time: HashMap<Pid, std::time::Instant> = HashMap::new();
 
     let mut summary_stats: HashMap<u64, SyscallStat> = HashMap::new();
     let mut tef = if options.tef {
@@ -274,9 +273,9 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
             // The child is now stopped and the tracer can record the syscall entry and exit, and then the tracer
             // is responsible for resuming the child.
             WaitStatus::PtraceSyscall(pid) => {
-                // Distinguish syscall entry vs exit using a per-PID toggle.
-                // If PID is not in the set, this stop is an entry; otherwise it's an exit.
-                let entering = !in_syscall.contains(&pid);
+                // Distinguish syscall entry vs exit using a per-PID start-time map.
+                // If PID is not in the map, this stop is an entry; otherwise it's an exit.
+                let entering = !syscall_start_time.contains_key(&pid);
 
                 if entering {
                     record_syscall_entry(
@@ -287,16 +286,21 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         &mut tef,
                         &mut summary_stats,
                     )?;
-                    in_syscall.insert(pid);
+                    // Capture entry timestamp as late as possible before resuming the tracee to minimize tracer overhead.
+                    syscall_start_time.insert(pid, std::time::Instant::now());
                 } else {
-                    // Snapshot current time, to avoid polluting the syscall time with
-                    // non-syscall related latency.
-                    let start = std::time::Instant::now();
-                    // TODO: it's a bit weird to recalc the timestamp on syscall exit and use it in CUDA output.
+                    // Retrieve the entry timestamp captured at syscall entry.
+                    let start_inst = syscall_start_time
+                        .remove(&pid)
+                        .unwrap_or_else(|| {
+                            // If we somehow missed the entry, fall back to now to avoid panicking.
+                            std::time::Instant::now()
+                        });
+                    // TODO: it's a bit weird to recalc the textual timestamp on syscall exit and use it in CUDA output.
                     let t: String = make_ts(&options.t)?;
                     record_syscall_exit(
                         pid.into(),
-                        &start,
+                        &start_inst,
                         &options,
                         &mut summary_stats,
                         &mut tef,
@@ -304,7 +308,6 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         &trace_start,
                         &t,
                     )?;
-                    in_syscall.remove(&pid);
                 }
 
                 nix::sys::ptrace::syscall(pid, None)?; // resume the child.
@@ -330,8 +333,8 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         &mut tef,
                         &mut summary_stats,
                     )?;
-                    // Mark that we've seen an entry for this PID so the next syscall stop is treated as exit.
-                    in_syscall.insert(pid);
+                    // Mark entry timestamp so the next syscall stop is treated as exit.
+                    syscall_start_time.insert(pid, std::time::Instant::now());
                     nix::sys::ptrace::syscall(pid, None)?;
                     continue;
                 }
@@ -372,14 +375,14 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                 // Remove the exited pid from our active set and terminate when all traced PIDs are done
                 if Pid::from_raw(child) == pid
                     && options.show_syscalls()
-                    && in_syscall.contains(&pid)
+                    && syscall_start_time.contains_key(&pid)
                 {
                     // Handle the fact that the child has exited before we know the return value
                     // of the current syscall.
                     writeln!(output, "?")?;
                 }
                 traced_pids.remove(&pid);
-                in_syscall.remove(&pid);
+                syscall_start_time.remove(&pid);
                 if traced_pids.is_empty() {
                     break;
                 } else {
@@ -416,11 +419,13 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                 // We stop at the PTRACE_EVENT_EXIT event because of the PTRACE_O_TRACEEXIT option.
                 // We do this to properly catch and log exit-family syscalls, which do not have an PTRACE_SYSCALL_INFO_EXIT event.
                 if code == ptrace::Event::Exit as i32 && is_exit_syscall(&pid)? {
-                    let start = std::time::Instant::now();
+                    let start_inst = syscall_start_time
+                        .remove(&pid)
+                        .unwrap_or_else(|| std::time::Instant::now());
                     let t: String = make_ts(&options.t)?;
                     record_syscall_exit(
                         pid.into(),
-                        &start,
+                        &start_inst,
                         &options,
                         &mut summary_stats,
                         &mut tef,
@@ -428,7 +433,6 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         &trace_start,
                         &t,
                     )?;
-                    in_syscall.remove(&pid);
                 }
 
                 nix::sys::ptrace::syscall(pid, None)?;
@@ -445,7 +449,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                     if coredump { "(core dumped)" } else { "" }
                 )?;
                 traced_pids.remove(&pid);
-                in_syscall.remove(&pid);
+                syscall_start_time.remove(&pid);
                 if traced_pids.is_empty() {
                     break;
                 }
