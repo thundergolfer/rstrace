@@ -219,7 +219,11 @@ unsafe fn _ptrace(
 ) -> Result<libc::c_long, i32> {
     let v = ptrace(request as libc::c_int, pid, addr, data);
     match v {
-        -1 => Result::Err(Error::last_os_error().raw_os_error().unwrap()),
+        -1 => Result::Err(
+            Error::last_os_error()
+                .raw_os_error()
+                .expect("last_os_error should always give Some"),
+        ),
         _ => Result::Ok(v),
     }
 }
@@ -366,7 +370,7 @@ impl Reader {
         }
         match l {
             Result::Err(e) => Result::Err(e),
-            _ => Result::Ok(l.unwrap() as Word),
+            _ => Result::Ok(l? as Word),
         }
     }
 

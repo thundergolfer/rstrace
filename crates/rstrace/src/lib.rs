@@ -67,14 +67,14 @@ fn make_ts(t_opt: &TimestampOption) -> Result<String> {
             let format = time::format_description::parse("[hour]:[minute]:[second]")?;
             let now = time::OffsetDateTime::now_local()
                 .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
-            format!("{} ", now.format(&format).unwrap())
+            format!("{} ", now.format(&format)?)
         }
         TimestampOption::AbsoluteUsecs => {
             let format =
                 time::format_description::parse("[hour]:[minute]:[second].[subsecond digits:6]")?;
             let now = time::OffsetDateTime::now_local()
                 .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
-            format!("{} ", now.format(&format).unwrap())
+            format!("{} ", now.format(&format)?)
         }
         TimestampOption::AbsoluteUNIXUsecs => {
             let now = time::OffsetDateTime::now_local()
@@ -165,7 +165,10 @@ where
         .map(|arg| CString::new(arg.as_ref()).expect("CString::new failed"))
         .collect();
 
-    let child_prog = cstrings.first().unwrap().clone();
+    let child_prog = cstrings
+        .first()
+        .expect("one ore more args should exist")
+        .clone();
     debug!(?child_prog, "starting child");
 
     let child_prog = child_prog.into_raw();
@@ -195,7 +198,9 @@ where
     libc::execvp(child_prog, argv);
 
     // If execution continued to here there was an error.
-    let errno: i32 = Error::last_os_error().raw_os_error().unwrap();
+    let errno: i32 = Error::last_os_error()
+        .raw_os_error()
+        .expect("last_os_error should always give Some");
     let error_name = nix::errno::Errno::from_raw(errno).desc();
     bail!("errno = {} ({})", errno, error_name)
 }
