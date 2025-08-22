@@ -527,7 +527,7 @@ fn record_syscall_entry(
                     if i == 0 && syscall_num == OPENAT_N && *register as i32 == AT_FDCWD {
                         "AT_FDCWD".to_string()
                     } else {
-                        // TODO: resolve to path
+                        // TODO: resolve to path, as done by strace
                         format!("{}", register)
                     }
                 }
