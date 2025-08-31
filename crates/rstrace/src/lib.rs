@@ -564,13 +564,13 @@ fn record_syscall_entry(
         }
         if show_syscalls {
             if let Some(ref mut tef) = tef {
-                let e = tef.emit_duration_start(
+                tef.write_duration_start(
+                    output,
                     name,
                     trace_start.elapsed().as_micros() as u64,
                     child as u32,
                     child as u32,
-                );
-                write!(output, "{}", e)?;
+                )?;
             } else {
                 let name = render_syscall(options.colored_output, name, syscall_num);
                 write!(output, "{}{}({}) = ", t, name, args_str)?;
@@ -626,13 +626,13 @@ fn record_syscall_exit(
     if syscall_num == EXIT_N || syscall_num == EXIT_GROUP_N {
         if show_syscalls {
             if let Some(ref mut tef) = tef {
-                let e = tef.emit_duration_end(
+                tef.write_duration_end(
+                    output,
                     name,
                     trace_start.elapsed().as_micros() as u64,
                     child as u32,
                     child as u32,
-                );
-                write!(output, "{}", e)?;
+                )?;
             } else {
                 writeln!(output, "?")?;
             }
@@ -647,13 +647,13 @@ fn record_syscall_exit(
                 // Kernel returns negative errno in rax; convert to positive for mapping/name.
                 let err_name: Errno = Errno::from_raw((-errno) as i32);
                 if let Some(ref mut tef) = tef {
-                    let e = tef.emit_duration_end(
+                    tef.write_duration_end(
+                        output,
                         name,
                         trace_start.elapsed().as_micros() as u64,
                         child as u32,
                         child as u32,
-                    );
-                    write!(output, "{}", e)?;
+                    )?;
                 } else {
                     writeln!(
                         output,
@@ -664,13 +664,13 @@ fn record_syscall_exit(
             }
             RetCode::Address(addr) => {
                 if let Some(ref mut tef) = tef {
-                    let e = tef.emit_duration_end(
+                    tef.write_duration_end(
+                        output,
                         name,
                         trace_start.elapsed().as_micros() as u64,
                         child as u32,
                         child as u32,
-                    );
-                    write!(output, "{}", e)?;
+                    )?;
                 } else {
                     let addr = render_syscall_return_addr(options.colored_output, addr);
                     writeln!(output, "{}", addr)?;
@@ -678,13 +678,13 @@ fn record_syscall_exit(
             }
             RetCode::Ok(retval) => {
                 if let Some(ref mut tef) = tef {
-                    let e = tef.emit_duration_end(
+                    tef.write_duration_end(
+                        output,
                         name,
                         trace_start.elapsed().as_micros() as u64,
                         child as u32,
                         child as u32,
-                    );
-                    write!(output, "{}", e)?;
+                    )?;
                 } else {
                     writeln!(
                         output,

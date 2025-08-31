@@ -40,38 +40,46 @@ impl TefWriter {
         TefWriter { started: false }
     }
 
-    // TODO(Jonathon): include args in the event.
-    pub fn emit_duration_start(
+    /// Write a DurationBegin event directly to the output stream.
+    pub fn write_duration_start(
         &mut self,
+        output: &mut dyn Write,
         name: &str,
         timestamp: u64,
         pid: u32,
         tid: u32,
-    ) -> String {
+    ) -> std::io::Result<()> {
         let phase = Phase::DurationBegin;
-        let e = format!(
-            "{{\"name\": \"{name}\", \"ts\": {timestamp}, \"cat\": \"{CATEGORY}\", \"ph\": \"{phase}\", \"pid\": {pid}, \"tid\": {tid}, \"args\": {{}}}},\n"
-        );
-
-        self.emit_event(e)
-    }
-
-    // TODO(Jonathon): include args and exit code (+ errno) in the event.
-    pub fn emit_duration_end(&mut self, name: &str, timestamp: u64, pid: u32, tid: u32) -> String {
-        let phase = Phase::DurationEnd;
-        let e = format!(
-            "{{\"name\": \"{name}\", \"ts\": {timestamp}, \"cat\": \"{CATEGORY}\", \"ph\": \"{phase}\", \"pid\": {pid}, \"tid\": {tid}, \"args\": {{}}}},\n"
-        );
-        self.emit_event(e)
-    }
-
-    fn emit_event(&mut self, e: String) -> String {
         if !self.started {
             self.started = true;
-            format!("[\n{e}") // Begin the JSON array.
-        } else {
-            e
+            output.write_all(b"[\n")?; // Begin the JSON array.
         }
+        write!(
+            output,
+            "{{\"name\": \"{}\", \"ts\": {}, \"cat\": \"{}\", \"ph\": \"{}\", \"pid\": {}, \"tid\": {}, \"args\": {{}}}},\n",
+            name, timestamp, CATEGORY, phase, pid, tid
+        )
+    }
+
+    /// Write a DurationEnd event directly to the output stream.
+    pub fn write_duration_end(
+        &mut self,
+        output: &mut dyn Write,
+        name: &str,
+        timestamp: u64,
+        pid: u32,
+        tid: u32,
+    ) -> std::io::Result<()> {
+        let phase = Phase::DurationEnd;
+        if !self.started {
+            self.started = true;
+            output.write_all(b"[\n")?; // Begin the JSON array.
+        }
+        write!(
+            output,
+            "{{\"name\": \"{}\", \"ts\": {}, \"cat\": \"{}\", \"ph\": \"{}\", \"pid\": {}, \"tid\": {}, \"args\": {{}}}},\n",
+            name, timestamp, CATEGORY, phase, pid, tid
+        )
     }
 
     /// Even though the TEF spec does not require that trace files are valid JSON,
@@ -85,8 +93,15 @@ impl TefWriter {
     ) -> std::io::Result<()> {
         // NB: emitting a final event is easier than removing the last comma of the previous event.
         let phase = Phase::Complete;
-        let final_event = format!("{{\"name\": \"END\", \"ts\": {timestamp}, \"dur\": 0, \"cat\": \"END\", \"ph\": \"{phase}\", \"pid\": {pid}, \"tid\": {tid}, \"args\": {{}}}}\n");
-        output.write_all(self.emit_event(final_event).as_bytes())?;
+        if !self.started {
+            self.started = true;
+            output.write_all(b"[\n")?; // Begin the JSON array if no events were written.
+        }
+        write!(
+            output,
+            "{{\"name\": \"END\", \"ts\": {}, \"dur\": 0, \"cat\": \"END\", \"ph\": \"{}\", \"pid\": {}, \"tid\": {}, \"args\": {{}}}}\n",
+            timestamp, phase, pid, tid
+        )?;
         output.write_all(b"]")?;
         Ok(())
     }
