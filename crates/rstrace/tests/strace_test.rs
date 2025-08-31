@@ -118,8 +118,7 @@ fn test_trace_tef_output() -> Result<()> {
     for (syscall, count) in tef_syscall_counts {
         if IGNORED_SYSCALLS.contains(&syscall.as_str()) {
             continue;
-        }
-        if syscall == "exit_group" {
+        } else if syscall == "exit_group" {
             continue; // strace summary ignores this.
         }
         let strace_count = strace_counts.get(syscall.as_str()).unwrap_or(&0);
