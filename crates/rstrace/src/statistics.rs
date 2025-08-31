@@ -59,10 +59,15 @@ pub fn summary_to_table(
             .unwrap_or("unknown");
         table.add_row(Row::new(vec![
             Cell::new_align(
-                &format!(
-                    "{:>6.2}",
-                    (stat.latency.as_secs_f64() / trace_duration.as_secs_f64()) * 100.0
-                ),
+                {
+                    let total_secs = trace_duration.as_secs_f64();
+                    let pct = if total_secs > 0.0 {
+                        (stat.latency.as_secs_f64() / total_secs) * 100.0
+                    } else {
+                        0.0
+                    };
+                    &format!("{:>6.2}", pct)
+                },
                 prettytable::format::Alignment::RIGHT,
             ),
             Cell::new_align(
