@@ -4,6 +4,13 @@ use anyhow::Result;
 use rstrace::trace_command;
 use std::{collections::HashMap, process::Command};
 
+const IGNORED_SYSCALLS: [&str; 2] = [
+    // TODO(Jonathon): figure out why this shows up in rstrace but not strace.
+    "rt_sigprocmask",
+    // TODO(Jonathon): figure out why this shows up 17 times in rstrace when it should be 1!
+    "execve",
+];
+
 fn count_syscalls(output: &str) -> HashMap<&str, u32> {
     let mut call_counts_by_syscall: HashMap<&str, u32> = HashMap::new();
     // The first two lines are the header; skip those.
@@ -31,7 +38,18 @@ fn count_syscalls(output: &str) -> HashMap<&str, u32> {
     call_counts_by_syscall
 }
 
+fn run_strace(program: &[String]) -> String {
+    let output = Command::new("strace")
+        .arg("-c")
+        .args(program)
+        .output()
+        .expect("failed to execute process");
+
+    String::from_utf8_lossy(&output.stderr).to_string()
+}
+
 #[test]
+#[serial_test::serial]
 fn test_trace_echo() -> Result<()> {
     let mut f = std::io::BufWriter::new(Vec::new());
     let options = rstrace::TraceOptions {
@@ -46,27 +64,65 @@ fn test_trace_echo() -> Result<()> {
     let r_strace_output = String::from_utf8(f.into_inner().unwrap())?;
     println!("{}", r_strace_output);
 
-    let output = Command::new("strace")
-        .arg("-c")
-        .args(&program)
-        .output()
-        .expect("failed to execute process");
-
-    let strace_output = String::from_utf8_lossy(&output.stderr);
+    let strace_output = run_strace(&program);
     println!("{}", strace_output);
 
     let r_counts = count_syscalls(&r_strace_output);
     let s_counts = count_syscalls(&strace_output);
 
     for (syscall, count) in r_counts {
-        if syscall == "rt_sigprocmask" {
-            // TODO(Jonathon): figure out why this shows up in rstrace but not strace.
-            continue;
-        } else if syscall == "execve" {
-            // TODO(Jonathon): figure out why this shows up 17 times in rstrace when it should be 1!
+        if IGNORED_SYSCALLS.contains(&syscall) {
             continue;
         }
         let strace_count = s_counts.get(syscall).unwrap_or(&0);
+        assert_eq!(
+            count, *strace_count,
+            "mismatch on {syscall}: rstrace has {count} but strace has {strace_count}"
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
+#[serial_test::serial]
+fn test_trace_tef_output() -> Result<()> {
+    let mut f = std::io::BufWriter::new(Vec::new());
+    let options = rstrace::TraceOptions {
+        tef: true,
+        cuda_verbose: false,
+        ..Default::default()
+    };
+    // Run 'echo hello' under rstrace with TEF output enabled.
+    let program = vec!["echo".to_string(), "hello".into()];
+    trace_command(&program, &mut f, options).unwrap();
+    let r_strace_output = String::from_utf8(f.into_inner().unwrap())?;
+    // Parse the output as JSON to validate.
+    let parsed: serde_json::Value = serde_json::from_str(&r_strace_output).unwrap();
+    assert!(parsed.is_array(), "TEF output should be a JSON array");
+    // Validate TEF correctness by counting syscalls.
+    let mut tef_syscall_counts: HashMap<String, u32> = HashMap::new();
+    if let serde_json::Value::Array(events) = parsed {
+        for event in events {
+            if let Some(name) = event.get("name").and_then(|n| n.as_str()) {
+                *tef_syscall_counts.entry(name.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
+    for count in tef_syscall_counts.values_mut() {
+        *count /= 2; // Divide all counts by 2 since each syscall has start and end events.
+    }
+    // Compare TEF syscall counts to strace output on same program.
+    let strace_output = run_strace(&program);
+    let strace_counts = count_syscalls(&strace_output);
+    for (syscall, count) in tef_syscall_counts {
+        if IGNORED_SYSCALLS.contains(&syscall.as_str()) {
+            continue;
+        }
+        if syscall == "exit_group" {
+            continue; // strace summary ignores this.
+        }
+        let strace_count = strace_counts.get(syscall.as_str()).unwrap_or(&0);
         assert_eq!(
             count, *strace_count,
             "mismatch on {syscall}: rstrace has {count} but strace has {strace_count}"

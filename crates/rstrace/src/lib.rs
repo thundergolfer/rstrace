@@ -290,12 +290,10 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                     syscall_start_time.insert(pid, std::time::Instant::now());
                 } else {
                     // Retrieve the entry timestamp captured at syscall entry.
-                    let start_inst = syscall_start_time
-                        .remove(&pid)
-                        .unwrap_or_else(|| {
-                            // If we somehow missed the entry, fall back to now to avoid panicking.
-                            std::time::Instant::now()
-                        });
+                    let start_inst = syscall_start_time.remove(&pid).unwrap_or_else(|| {
+                        // If we somehow missed the entry, fall back to now to avoid panicking.
+                        std::time::Instant::now()
+                    });
                     // TODO: it's a bit weird to recalc the textual timestamp on syscall exit and use it in CUDA output.
                     let t: String = make_ts(&options.t)?;
                     record_syscall_exit(
