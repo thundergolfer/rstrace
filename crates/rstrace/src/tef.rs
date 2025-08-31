@@ -56,8 +56,7 @@ impl TefWriter {
         }
         write!(
             output,
-            "{{\"name\": \"{}\", \"ts\": {}, \"cat\": \"{}\", \"ph\": \"{}\", \"pid\": {}, \"tid\": {}, \"args\": {{}}}},\n",
-            name, timestamp, CATEGORY, phase, pid, tid
+            r#"{{"name": "{name}", "ts": {timestamp}, "cat": "{CATEGORY}", "ph": "{phase}", "pid": {pid}, "tid": {tid}, "args": {{}}}},"#,
         )
     }
 
@@ -77,8 +76,7 @@ impl TefWriter {
         }
         write!(
             output,
-            "{{\"name\": \"{}\", \"ts\": {}, \"cat\": \"{}\", \"ph\": \"{}\", \"pid\": {}, \"tid\": {}, \"args\": {{}}}},\n",
-            name, timestamp, CATEGORY, phase, pid, tid
+            r#"{{"name": "{name}", "ts": {timestamp}, "cat": "{CATEGORY}", "ph": "{phase}", "pid": {pid}, "tid": {tid}, "args": {{}}}},"#,
         )
     }
 
@@ -99,8 +97,7 @@ impl TefWriter {
         }
         write!(
             output,
-            "{{\"name\": \"END\", \"ts\": {}, \"dur\": 0, \"cat\": \"END\", \"ph\": \"{}\", \"pid\": {}, \"tid\": {}, \"args\": {{}}}}\n",
-            timestamp, phase, pid, tid
+            r#"{{"name": "END", "ts": {timestamp}, "dur": 0, "cat": "END", "ph": "{phase}", "pid": {pid}, "tid": {tid}, "args": {{}}}}"#,
         )?;
         output.write_all(b"]")?;
         Ok(())
