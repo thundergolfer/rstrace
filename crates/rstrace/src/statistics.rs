@@ -69,8 +69,19 @@ pub fn summary_to_table(
                 &format!("{:>6.6}", stat.latency.as_secs_f64()),
                 prettytable::format::Alignment::RIGHT,
             ),
-            // TODO(Jonathon): add 'usecs/call' value
-            Cell::new_align(&format!("{:>9}", 0), prettytable::format::Alignment::RIGHT),
+            // Average microseconds per call, rounded to nearest integer
+            {
+                let usecs_per_call: u64 = if stat.calls > 0 {
+                    ((stat.latency.as_secs_f64() * 1_000_000.0) / (stat.calls as f64)).round()
+                        as u64
+                } else {
+                    0
+                };
+                Cell::new_align(
+                    &format!("{:>9}", usecs_per_call),
+                    prettytable::format::Alignment::RIGHT,
+                )
+            },
             Cell::new_align(
                 &format!("{:>8}", stat.calls),
                 prettytable::format::Alignment::RIGHT,
