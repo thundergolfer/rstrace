@@ -81,10 +81,20 @@ fn make_ts(t_opt: &TimestampOption) -> Result<String> {
                 .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
             let secs = now.unix_timestamp();
             let micros = now.microsecond();
-            format!("{}.{:06} ", secs, micros)
+            format!("{}.{} ", secs, format!("{:06}", micros))
         }
     };
     Ok(t)
+}
+
+/// Format a line prefix for follow-forks mode to match strace.
+/// Adds "[pid N] " for child processes when following forks; no prefix for the root PID.
+fn make_pid_prefix(options: &TraceOptions, pid: libc::pid_t, root_pid: libc::pid_t) -> String {
+    if options.follow_forks && pid != root_pid {
+        format!("[pid {}] ", pid)
+    } else {
+        String::new()
+    }
 }
 
 #[allow(missing_docs)]
@@ -285,6 +295,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         &trace_start,
                         &mut tef,
                         &mut summary_stats,
+                        child as libc::pid_t,
                     )?;
                     // Capture entry timestamp as late as possible before resuming the tracee to minimize tracer overhead.
                     syscall_start_time.insert(pid, std::time::Instant::now());
@@ -305,6 +316,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         output,
                         &trace_start,
                         &t,
+                        child as libc::pid_t,
                     )?;
                 }
 
@@ -330,6 +342,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         &trace_start,
                         &mut tef,
                         &mut summary_stats,
+                        child as libc::pid_t,
                     )?;
                     // Mark entry timestamp so the next syscall stop is treated as exit.
                     syscall_start_time.insert(pid, std::time::Instant::now());
@@ -430,6 +443,7 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                         output,
                         &trace_start,
                         &t,
+                        child as libc::pid_t,
                     )?;
                 }
 
@@ -488,8 +502,10 @@ fn record_syscall_entry(
     trace_start: &std::time::Instant,
     tef: &mut Option<tef::TefWriter>,
     summary_stats: &mut HashMap<u64, SyscallStat>,
+    root_pid: libc::pid_t,
 ) -> Result<()> {
     let t: String = make_ts(&options.t)?;
+    let pid_prefix = make_pid_prefix(options, child, root_pid);
     let show_syscalls = options.show_syscalls();
     let registers =
         ptrace::getregs(child).map_err(|errno| anyhow!("ptrace failed errno {}", errno))?;
@@ -573,14 +589,14 @@ fn record_syscall_entry(
                 )?;
             } else {
                 let name = render_syscall(options.colored_output, name, syscall_num);
-                write!(output, "{}{}({}) = ", t, name, args_str)?;
+                write!(output, "{}{}{}({}) = ", pid_prefix, t, name, args_str)?;
             }
         }
     } else {
         warn!("unknown syscall number {}", syscall_num);
         // "Syscalls unknown to strace are printed raw, with the unknown system call number printed in hexadecimal form and prefixed with "syscall_":"
         if show_syscalls {
-            write!(output, "{}syscall_{:#x} = ", t, syscall_num)?;
+            write!(output, "{}{}syscall_{:#x} = ", pid_prefix, t, syscall_num)?;
         }
     };
     Ok(())
@@ -596,6 +612,7 @@ fn record_syscall_exit(
     output: &mut dyn std::io::Write,
     trace_start: &std::time::Instant,
     timestamp: &str, // timestamp
+    root_pid: libc::pid_t,
 ) -> Result<()> {
     let show_syscalls = options.show_syscalls();
     let show_cuda = show_syscalls || options.cuda_only;
@@ -709,7 +726,8 @@ fn record_syscall_exit(
                     .map(|line| format!("  {}", line))
                     .collect::<Vec<_>>()
                     .join("\n");
-                writeln!(output, "{}{}", timestamp, info)?;
+                let pid_prefix = make_pid_prefix(options, child, root_pid);
+                writeln!(output, "{}{}{}", pid_prefix, timestamp, info)?;
             }
         }
     }
