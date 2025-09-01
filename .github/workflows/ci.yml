@@ -41,6 +41,7 @@ jobs:
     name: Test on Modal GPUs
     runs-on: ubuntu-latest
     needs: test
+    timeout-minutes: 20
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
