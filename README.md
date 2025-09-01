@@ -62,11 +62,51 @@ Options:
 
 ## cuda_sniff extension
 
-`cuda_sniff` is an extension to strace-rs that allows the user to trace CUDA API calls. It is based on
+`cuda_sniff` is an extension to `rstrace` that allows the user to trace CUDA API calls. It is based on
 https://github.com/geohot/cuda_ioctl_sniffer by George Hotz.
 
 `gvisor` has an alternative implementation called [ioct_sniffer](https://pkg.go.dev/gvisor.dev/gvisor/tools/ioctl_sniffer#section-readme) which uses `LD_PRELOAD` to intercept calls,
-unlike `strace-rs` which uses ptrace.
+unlike `rstrace` which uses ptrace.
+
+## Trace Event Format (TEF)
+
+`rstrace` can emit basic tracing data which can be loaded into the Google [Perfetto](https://perfetto.dev/) trace viewer.
+
+e.g. `rstrace --output in-kernel.tef.json --tef python userspace.py`
+
+| Kernel | Userspace |
+|--------|-----------|
+| ![kernel-tef](./assets/kernel-tef.png) | ![userspace-tef](./assets/userspace-tef.png) |
+
+<details>
+<summary>Syscall heavy code snippet</summary>
+<pre>
+import os, time
+deadline = time.monotonic() + 5
+fd = os.open("tmp.bin", os.O_CREAT | os.O_RDWR, 0o600)
+buf = b"\0" * 4096
+while time.monotonic() < deadline:
+    os.pwrite(fd, buf, 0)
+    os.fsync(fd)
+os.close(fd)</pre>
+</details>
+
+<details>
+<summary>Userspace code snippet</summary>
+<pre>use std::time::{Duration, Instant};
+fn main() {
+    let start = Instant::now();
+    let mut x: u64 = 0;
+    while start.elapsed() < Duration::from_secs(5) {
+        for _ in 0..1_000_000 {
+            // LCG-style math to burn CPU; wrapping avoids UB
+            x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+        }
+    }
+    println!("{}", x); // prevents optimizing away the loop
+}</pre>
+</details>
+
 
 ## Alternatives
 
