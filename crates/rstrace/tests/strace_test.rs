@@ -131,8 +131,8 @@ fn test_trace_tef_output() -> Result<()> {
     Ok(())
 }
 
-#[ignore]
 #[test]
+#[serial_test::serial]
 fn test_follow_forks() -> Result<()> {
     let mut f = std::io::BufWriter::new(Vec::new());
     let options = rstrace::TraceOptions {
