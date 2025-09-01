@@ -74,7 +74,7 @@ unlike `rstrace` which uses ptrace.
 
 e.g. `rstrace --output in-kernel.tef.json --tef python userspace.py`
 
-| Kernel | Userspace |
+| Syscall dominant | Userspace dominant |
 |--------|-----------|
 | ![kernel-tef](./assets/kernel-tef.png) | ![userspace-tef](./assets/userspace-tef.png) |
 
