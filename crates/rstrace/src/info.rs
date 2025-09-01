@@ -254,13 +254,21 @@ pub enum RetCode {
 impl RetCode {
     /// Convert a raw return code to a `RetCode`.
     pub fn from_raw(ret_code: u64) -> Self {
-        let ret_i32 = ret_code as isize;
-        if ret_i32 == isize::MIN || ret_i32.abs() > 0x8000 {
+        // Linux syscall ABI: return values in [-4095, -1] encode -errno.
+        // Anything else is a successful return value.
+        let ret_i64 = ret_code as i64;
+        if (-4095..=-1).contains(&ret_i64) {
+            // Preserve the negative raw value; callers convert to positive errno as needed.
+            return Self::Err(ret_i64 as i32);
+        }
+
+        // Heuristic for address-like return values (e.g., mmap).
+        // Keep existing behavior for now to preserve rendering differences.
+        let ret_isize = ret_i64 as isize;
+        if ret_isize == isize::MIN || ret_isize.abs() > 0x8000 {
             Self::Address(ret_code as usize)
-        } else if ret_i32 < 0 {
-            Self::Err(ret_i32 as i32)
         } else {
-            Self::Ok(ret_i32 as i32)
+            Self::Ok(ret_isize as i32)
         }
     }
 }
