@@ -36,7 +36,7 @@ app = modal.App(
     secrets=[modal.Secret.from_name("rstrace-github-token")],
 )
 
-@app.function(gpu="any", cpu=(1, 16),timeout=500, scaledown_window=2)
+@app.function(gpu="any", cpu=(1, 16),timeout=800, scaledown_window=2)
 def test_on_gpu(commit_sha: str = ""):
     # Grab the Github token populated in the environment by the use of a modal.Secret.
     token = os.environ["GITHUB_TOKEN"]
