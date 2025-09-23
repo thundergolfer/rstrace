@@ -107,9 +107,10 @@ struct Cli {
 
     #[clap(
         long = "color",
-        help = "Enable colored output (default)",
-        action = ArgAction::SetTrue,
-        default_value_t = true
+        help = "Enable colored output",
+        action = ArgAction::Set,
+        default_value_t = true,
+        value_name = "BOOL"
     )]
     color: bool,
 
