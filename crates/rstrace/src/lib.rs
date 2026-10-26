@@ -465,7 +465,6 @@ fn do_trace(child: i32, output: &mut dyn std::io::Write, options: TraceOptions) 
                 if traced_pids.is_empty() {
                     break;
                 }
-                break;
             }
             // WIFCONTINUED(status), this usually happens when a process receives a SIGCONT.
             // Just continue with the next iteration of the loop.

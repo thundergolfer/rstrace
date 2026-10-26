@@ -219,3 +219,34 @@ rm -f "$temp_file"
 
     Ok(())
 }
+
+#[test]
+#[serial_test::serial]
+fn test_follow_forks_continues_after_child_killed_by_signal() -> Result<()> {
+    let mut f = std::io::BufWriter::new(Vec::new());
+    let options = rstrace::TraceOptions {
+        follow_forks: true,
+        ..Default::default()
+    };
+
+    // The subshell kills itself with SIGKILL; the parent then keeps running.
+    let program: Vec<String> = vec![
+        "bash".to_string(),
+        "-c".to_string(),
+        "(kill -9 $BASHPID); /bin/echo after-child-killed".to_string(),
+    ];
+    trace_command(&program, &mut f, options).unwrap();
+    let output = String::from_utf8(f.into_inner().unwrap())?;
+    println!("{}", output);
+
+    assert!(
+        output.contains("terminated by signal SIGKILL"),
+        "expected the killed child to be reported"
+    );
+    assert!(
+        output.contains("after-child-killed"),
+        "tracing stopped when the child was killed instead of following the parent"
+    );
+
+    Ok(())
+}
